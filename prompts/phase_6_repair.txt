@@ -1,0 +1,15 @@
+Fix this Playwright test.
+
+Issues:
+{{ERROR}}
+
+Code:
+{{TEST_CODE}}
+
+Rules:
+- preserve intent
+- fix syntax, selectors, async usage
+- ensure runnable
+- include assertions
+
+Return corrected code only.

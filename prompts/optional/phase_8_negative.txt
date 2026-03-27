@@ -1,0 +1,11 @@
+Generate one negative test for:
+
+{{ENDPOINT}}
+
+Rules:
+- use invalid input
+- assert error response
+- keep minimal
+- runnable test
+
+Return full .spec.ts only.

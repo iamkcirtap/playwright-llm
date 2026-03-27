@@ -1,0 +1,31 @@
+Generate a Playwright API test.
+
+Endpoint:
+{{ENDPOINT}}
+
+Payload:
+{{PAYLOAD}}
+
+Rules:
+- Use the provided endpoint exactly as given
+- Prefer importing and using `ApiHelper` from `../../utils/api-helper` for API requests
+- Use relative API endpoints such as `/api/checkout`, never absolute URLs such as `http://localhost:8080/api/checkout`
+- For GET endpoints, use `apiHelper.get(endpoint)`
+- For POST endpoints, use `apiHelper.post(endpoint, payload)`
+- Treat the provided payload as authoritative for the request body
+- Send the request with the provided payload
+- Prefer Swagger response schema when choosing assertions
+- Assert:
+  - status code
+  - 1-2 meaningful stable response fields only
+- Assert only fields that are likely present in the real response schema
+- Prefer fields such as `success`, `valid`, `status`, `message`, or other stable contract fields
+- Do not invent request or response properties
+- Do not assert generated IDs, timestamps, or unstable text unless clearly stable
+- Use Playwright request testing patterns
+- Keep the test compatible with the existing helper implementation
+- Self-contained test
+- Deterministic values
+- No placeholders
+
+Return full .spec.ts file only.

@@ -1,0 +1,14 @@
+Validate this Playwright test.
+
+Check:
+- contains test() or expect()
+- contains import or require
+- contains TODO or FIXME
+- valid syntax
+- no placeholders
+- uses valid selectors
+
+Return:
+VALID
+or
+INVALID: <reason>

@@ -1,0 +1,33 @@
+node_modules/
+test-results/
+playwright-report/
+playwright/.cache/
+results.xml
+screenshots/
+videos/
+coverage/
+.env
+.env.local
+.env.*
+!.env.example
+.DS_Store
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.python-version
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+.venv.broken/
+swagger/spec.json
+
+# IDE
+.vscode/settings.json
+.idea/
+
+# OS
+Thumbs.db

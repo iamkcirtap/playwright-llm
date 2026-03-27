@@ -1,0 +1,9 @@
+Make this test deterministic.
+
+Rules:
+- remove randomness
+- use fixed values
+- ensure stable assertions
+- avoid timing issues
+
+Return updated code only.

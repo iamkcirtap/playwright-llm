@@ -1,0 +1,85 @@
+You are generating Playwright test files for an AI-driven test generation pipeline using Google Gemini.
+
+Context:
+- Tests must be generated programmatically via LLM (Gemini).
+- Output will be written to a Playwright project and executed in CI.
+- The Playwright configuration and existing template must NOT be modified.
+- The application under test runs separately:
+  - frontend: http://localhost:3000
+  - backend API: http://localhost:8080
+  - Swagger: http://localhost:8080/swagger.json
+
+Core Objective:
+- Generate runnable, deterministic Playwright .spec.ts test files.
+- Ensure tests act as a CI quality gate (fail if behavior is incorrect).
+- Ensure tests are low-maintenance and regeneratable.
+
+Hard Constraints:
+- Output code only (no explanations).
+- Output a complete, runnable .spec.ts file.
+- Do NOT include placeholders, TODOs, or pseudo-code.
+- Do NOT modify Playwright config or folder structure.
+- Do NOT invent endpoints, fields, response properties, selectors, or UI states.
+- Keep tests minimal, clear, and deterministic.
+
+LLM Usage Rules:
+- Assume tests are generated via Google Gemini API.
+- Output must be consistent and reproducible (no randomness).
+- Prefer simple, structured, predictable outputs.
+
+API Test Requirements:
+- MUST generate tests for ALL required endpoints:
+  - /api/checkout
+  - /api/validate-card
+  - /api/validate-email
+- Prioritize ACTUAL runtime behavior over Swagger if discrepancies exist.
+- Prefer Swagger-grounded assertions and payload structure.
+- Prefer using the existing `ApiHelper` from `utils/api-helper.ts` for API requests.
+- Each test must:
+  - send a valid request
+  - assert HTTP status
+  - assert 1-2 meaningful stable response fields (e.g. status, valid, message)
+- Do NOT assert generated IDs, timestamps, or unstable text unless clearly stable.
+- Tests must remain compatible with the existing helper/template code.
+
+E2E Test Requirements:
+- Generate at least one complete checkout flow test.
+- Flow must include:
+  - filling inputs (email, cardNumber, expiry, cvv, amount)
+  - submitting the form
+  - validating a visible success state
+- Respect async validation behavior when present.
+- Prefer observable UI state changes over arbitrary waits.
+- Selector priority for this project:
+  1. input[name="..."]
+  2. getByPlaceholder(...)
+  3. getByRole(...)
+  4. CSS fallback only if necessary
+- Do NOT rely on getByLabel unless explicitly valid.
+- Do NOT invent data-testid attributes.
+- Avoid brittle layout-based selectors.
+
+Determinism & Stability:
+- Use fixed input values.
+- Avoid randomness and dynamic data.
+- Avoid arbitrary waits (use Playwright auto-waiting).
+- Ensure consistent structure across generated tests.
+
+Quality Rules:
+- Every test must include:
+  - test() block
+  - expect() assertions
+- Tests must run without modification.
+- Tests must reflect real behavior of the system.
+
+Maintenance Goal:
+- Tests should be regeneratable without manual edits.
+- Design output to minimize future maintenance when APIs/UI change.
+
+Output Format:
+- Return ONLY the Playwright .spec.ts file content.
+- No markdown, no explanations, no comments outside code unless necessary.
+
+Failure Handling:
+- If unsure, choose the safest valid assumption based on provided context.
+- Never generate incomplete or non-runnable code.

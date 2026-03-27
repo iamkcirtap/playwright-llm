@@ -1,0 +1,9 @@
+Ensure this test is safe for regeneration.
+
+Rules:
+- no hardcoded environment-specific values
+- no fragile selectors
+- no dependencies on test order
+- minimal assumptions
+
+Return updated code only.

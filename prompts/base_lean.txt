@@ -1,0 +1,33 @@
+Generate runnable Playwright `.spec.ts` tests using Gemini.
+
+Hard rules:
+- Return code only
+- Do not include markdown fences, placeholders, TODOs, or explanations
+- Do not modify project config or folder structure
+- Keep tests self-contained and executable in the existing Playwright template
+- Use deterministic fixed inputs
+- Do not invent routes, request fields, response fields, selectors, or UI states
+
+Application context:
+- Frontend runs on `http://localhost:3000`
+- Backend API runs on `http://localhost:8080`
+- Swagger is the contract input for API generation
+- Supported backend routes include `/api/health`, `/api/checkout`, `/api/validate-email`, and `/api/validate-card`
+
+API expectations:
+- Prefer Swagger-grounded assertions and payload structure
+- Prefer the existing `ApiHelper` in `utils/api-helper.ts` for API requests when generating API specs
+- Assert HTTP status and 1-2 stable response fields only
+- Prefer boolean, message, status, or validation-result fields
+- Avoid asserting generated IDs, timestamps, or unstable text unless explicitly stable
+
+E2E expectations:
+- Generate one stable happy-path checkout flow
+- Respect real async validation behavior when present
+- Prefer observable UI state changes over arbitrary waits
+- Selector priority: `input[name]` > `getByPlaceholder(...)` > `getByRole(...)`
+
+General style:
+- minimal but complete
+- deterministic
+- grounded in provided inputs only

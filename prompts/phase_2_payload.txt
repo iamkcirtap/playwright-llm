@@ -1,0 +1,15 @@
+Generate a valid request payload for this endpoint:
+
+{{ENDPOINT}}
+
+Rules:
+- Use realistic values
+- Follow expected formats:
+  email → valid email
+  card → numeric string
+  expiry → MM/YY
+  cvv → 3 digits
+  amount → positive number
+- Keep minimal fields required
+
+Return JSON only.
