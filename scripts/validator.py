@@ -13,7 +13,7 @@ import re
 from llm_client import call_llm
 from prompt_loader import build_prompt, load_prompt
 
-BASE_PROMPT_NAME = "base_lean"
+BASE_PROMPT_NAME = "core_context"
 REQUIRED_E2E_FIELDS = ["email", "cardNumber", "expiry", "cvv", "amount"]
 PLACEHOLDER_MARKERS = ["TODO", "FIXME"]
 MAX_API_TEST_BLOCKS = 1
@@ -268,7 +268,7 @@ def validate_test_cases(
 def repair_test_cases(code: str, error: str = "") -> str:
     """Ask Gemini to repair invalid generated code using a focused error message."""
     base_prompt = load_prompt(BASE_PROMPT_NAME)
-    repair_prompt = load_prompt("phase_6_repair")
+    repair_prompt = load_prompt("repair_generation")
     full_prompt = build_prompt(
         base_prompt,
         repair_prompt,

@@ -37,7 +37,7 @@ def inject_variables(prompt: str, variables: dict) -> str:
     
 
 def build_prompt(base: str, specific: str, variables: dict) -> str:
-    """Combine the base prompt, phase prompt, and template variables."""
+    """Combine the base prompt, focused prompt, and template variables."""
     if "{{SPECIFIC_PROMPT}}" in base:
         prompt = base.replace("{{SPECIFIC_PROMPT}}", specific)
     else:

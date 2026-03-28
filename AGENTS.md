@@ -137,10 +137,10 @@ Avoid:
 
 The current runtime flow uses only these prompt files:
 
-- `prompts/base_lean.txt`
-- `prompts/phase_3_api.txt`
-- `prompts/phase_4_e2e.txt`
-- `prompts/phase_6_repair.txt`
+- `prompts/core_context.txt`
+- `prompts/api_test_generation.txt`
+- `prompts/e2e_test_generation.txt`
+- `prompts/repair_generation.txt`
 
 Other prompt files may remain in the repository as legacy or optional references, but they are not loaded by the current generation flow.
 

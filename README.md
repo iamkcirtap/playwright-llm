@@ -122,7 +122,7 @@ flowchart TD
 
 ### 1. LLM Prompt Design
 
-Prompts are split into focused phases. `base_lean.txt` sets the global context: TypeScript, Playwright, no placeholders, no TODOs. `phase_3_api.txt` handles API test generation with the Swagger contract and fixed payloads injected via `{{VARIABLE}}` substitution. `phase_4_e2e.txt` handles the checkout flow with explicit selector priority rules. `phase_6_repair.txt` routes a focused validation message back to Gemini for one fix attempt. Keeping prompts short and single-purpose reduces unpredictable output.
+Prompts are split into focused roles. `core_context.txt` sets the global context: TypeScript, Playwright, no placeholders, no TODOs. `api_test_generation.txt` handles API test generation with the Swagger contract and fixed payloads injected via `{{VARIABLE}}` substitution. `e2e_test_generation.txt` handles the checkout flow with explicit selector priority rules. `repair_generation.txt` routes a focused validation message back to Gemini for one fix attempt. Keeping prompts short and single-purpose reduces unpredictable output.
 
 ### 2. Swagger → Playwright Tests
 
@@ -397,10 +397,10 @@ Known runtime notes applied by the generator:
 
 ## Prompt Files In Use
 
-- [`prompts/base_lean.txt`](prompts/base_lean.txt)
-- [`prompts/phase_3_api.txt`](prompts/phase_3_api.txt)
-- [`prompts/phase_4_e2e.txt`](prompts/phase_4_e2e.txt)
-- [`prompts/phase_6_repair.txt`](prompts/phase_6_repair.txt)
+- [`prompts/core_context.txt`](prompts/core_context.txt)
+- [`prompts/api_test_generation.txt`](prompts/api_test_generation.txt)
+- [`prompts/e2e_test_generation.txt`](prompts/e2e_test_generation.txt)
+- [`prompts/repair_generation.txt`](prompts/repair_generation.txt)
 
 Other prompt files in [`prompts/`](prompts/) are currently kept as legacy or optional references. They are not loaded by the present runtime flow, so they do not add token cost unless the code is expanded to use them again.
 

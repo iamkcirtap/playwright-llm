@@ -32,7 +32,7 @@ from swagger_loader import (
 )
 import validator
 
-BASE_PROMPT_NAME = "base_lean"
+BASE_PROMPT_NAME = "core_context"
 API_TESTS_DIR = pathlib.Path("tests") / "api"
 WEB_TESTS_DIR = pathlib.Path("tests") / "web"
 REQUIRED_API_ENDPOINTS = [
@@ -199,11 +199,11 @@ def generate_api_test(endpoint_spec: dict, payload: dict) -> str:
     behavior when it differs from the Swagger contract.
     """
     base_prompt = load_prompt(BASE_PROMPT_NAME)
-    phase3_prompt = load_prompt("phase_3_api")
+    api_prompt = load_prompt("api_test_generation")
 
     prompt = build_prompt(
         base_prompt,
-        phase3_prompt,
+        api_prompt,
         {
             "ENDPOINT": endpoint_spec["endpoint"],
             "ENDPOINT_SPEC": json.dumps(endpoint_spec, indent=2),
@@ -256,9 +256,9 @@ def generate_with_llm_guard(target_name: str, generator: Callable[[], str]) -> s
 def generate_e2e_test(e2e_test_plan: dict) -> str:
     """Build the E2E prompt and ask Gemini for a checkout spec file."""
     base_prompt = load_prompt(BASE_PROMPT_NAME)
-    phase4_prompt = load_prompt("phase_4_e2e")
+    e2e_prompt = load_prompt("e2e_test_generation")
 
-    prompt = build_prompt(base_prompt, phase4_prompt, {"E2E_PLAN": json.dumps(e2e_test_plan)})
+    prompt = build_prompt(base_prompt, e2e_prompt, {"E2E_PLAN": json.dumps(e2e_test_plan)})
     return call_llm(prompt, cache_key=f"e2e_{e2e_test_plan['flow']}")
 
 
