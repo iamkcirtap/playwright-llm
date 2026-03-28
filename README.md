@@ -22,7 +22,7 @@ The design is intentionally simple:
 6. Repair once if needed
 7. Save only valid `.spec.ts` files
 
-This keeps the solution deterministic, cheaper to run, and easier to explain in an interview.
+This keeps the solution deterministic, cheaper to run, and easier to explain.
 
 ## Short Script Explanations
 
@@ -111,7 +111,7 @@ If invalid:
 
 ## Caching Strategy
 
-Caching is intentionally simple and interview-friendly.
+Caching is intentionally simple.
 
 - Each generated artifact gets a readable cache key such as `api_api_checkout` or `e2e_checkout`
 - Responses are stored as versioned text files under `.cache/llm/`
@@ -147,7 +147,7 @@ This repo assumes the target application is already running and reachable during
 - [`prompts/phase_4_e2e.txt`](prompts/phase_4_e2e.txt)
 - [`prompts/phase_6_repair.txt`](prompts/phase_6_repair.txt)
 
-## Why This Is A Good SDET Solution
+## Why This Is A Good Solution
 
 - It is reproducible
 - It is deterministic where possible
