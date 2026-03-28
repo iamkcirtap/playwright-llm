@@ -27,5 +27,6 @@ Constraints:
 - Avoid brittle CSS chains unless no better selector exists
 - Do not assert decorative text or unstable transient UI
 - Keep the test deterministic and minimal
+- Return code only, with no markdown fences or explanation
 
 Return runnable .spec.ts only.

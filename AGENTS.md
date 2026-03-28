@@ -4,61 +4,55 @@
 
 This repository implements an AI-driven Playwright test generation pipeline using Google Gemini.
 
-The system automatically generates:
-- API tests from Swagger/OpenAPI definitions
-- E2E tests for the checkout flow
+The system generates:
 
-Generated tests are executed in CI as a quality gate.
+- API tests from Swagger/OpenAPI definitions
+- one E2E checkout flow
+
+Generated tests are then executed in CI as a quality gate.
 
 ---
 
 ## Core Objective
 
-Build a reproducible, low-maintenance test automation system where:
+Build a reproducible, low-maintenance automation flow where:
 
-- Tests are generated programmatically using an LLM (Gemini)
-- Tests validate real application behavior
-- Tests run in CI and fail on regression
-- Minimal manual test maintenance is required
+- tests are generated programmatically with Gemini
+- tests validate real application behavior
+- tests run in CI and fail on regression
+- manual maintenance stays minimal
 
 ---
 
 ## Constraints
 
 - Do NOT modify `playwright.config.ts`
-- Do NOT change existing project structure
+- Do NOT change the existing project structure
 - Output only runnable `.spec.ts` files
 - Do NOT include placeholders or TODOs
 - Do NOT invent endpoints, fields, or UI elements
-- Use deterministic inputs (no randomness)
+- Use deterministic inputs
 
 ---
 
-## LLM Usage
+## Required Coverage
 
-- All test generation must be done via Google Gemini API
-- Prompts must be structured and deterministic
-- Output must be consistent across runs
-
----
-
-## Test Coverage Requirements
-
-The following endpoints MUST be fully covered:
+The following endpoints must be covered:
 
 - `/api/checkout`
 - `/api/validate-card`
 - `/api/validate-email`
 
 Additionally:
-- At least one full E2E checkout flow must be generated
+
+- generate at least one full E2E checkout flow
 
 ---
 
-## Source of Truth
+## Source Of Truth
 
-- Swagger/OpenAPI is used as guidance
-- Actual runtime behavior takes priority if discrepancies exist
+- Swagger/OpenAPI is the contract guide
+- Actual runtime behavior takes priority if Swagger and runtime differ
 
 ---
 
@@ -66,29 +60,30 @@ Additionally:
 
 ### API Tests
 
-- Must send valid request payloads
-- Must assert HTTP status
-- Must assert at least one meaningful response field
-- Must be self-contained (no dependency on helpers)
-
----
+- Send valid deterministic payloads
+- Assert HTTP status
+- Assert at least one meaningful response field
+- Keep each test self-contained
 
 ### E2E Tests
 
 Must:
-- Fill required fields (email, cardNumber, expiry, cvv, amount)
-- Submit the checkout form
-- Assert a visible success state
+
+- fill email, cardNumber, expiry, cvv, and amount
+- submit the checkout form
+- assert a visible success state
 
 Selector priority:
+
 1. `input[name="..."]`
 2. `getByPlaceholder(...)`
 3. `getByRole(...)`
-4. CSS fallback (last resort)
+4. CSS fallback only if needed
 
 Avoid:
-- `getByLabel` unless explicitly valid
-- `data-testid` (not present in UI)
+
+- `getByLabel` unless clearly valid
+- `data-testid` assumptions when not present
 
 ---
 
@@ -97,101 +92,64 @@ Avoid:
 - Use fixed input values
 - Avoid randomness
 - Avoid timing assumptions
-- Prefer Playwright built-in waiting
+- Prefer Playwright waiting over manual sleeps
 
 ---
 
 ## Generation Flow
 
 1. Load Swagger and prompts
-2. Generate test plan (LLM)
-3. For each endpoint:
-   - Generate payload (LLM)
-   - Generate API test (LLM)
-   - Validate test
-   - Repair once if invalid (LLM)
-   - Save test
-4. Generate E2E test (LLM)
-5. Validate and repair
-6. Save test
+2. Confirm required endpoints exist
+3. For each required API endpoint:
+   - use a fixed deterministic payload
+   - generate the API test with Gemini
+   - validate the generated code
+   - repair once if invalid
+   - save only valid output
+4. Generate one checkout E2E test with Gemini
+5. Validate and repair once if needed
+6. Save only valid output
+7. Reuse existing valid specs and simple cached LLM responses when available
 
 ---
 
 ## Validation Rules
 
-A generated test is considered valid if:
+A generated test is valid if it:
 
-- Contains `test()`
-- Contains `expect()`
-- Is syntactically valid
-- Has no placeholders or TODOs
+- contains `test()`
+- contains `expect()`
+- contains imports
+- has no placeholders or TODOs
+- references only allowed API routes for API specs
+- includes the required checkout structure for E2E specs
 
 If invalid:
-- Attempt one repair using LLM
-- If still invalid, skip
 
----
-
-## CI/CD Requirements
-
-The CI pipeline must:
-
-- Execute test generation
-- Run Playwright API tests
-- Run Playwright E2E tests
-- Fail the pipeline if any test fails
-- Produce test reports/artifacts
+- attempt one repair using Gemini
+- if still invalid, skip the file
 
 ---
 
 ## Environment Assumption
 
-The CI pipeline assumes the application is already running and accessible via `BASE_URL`, based on assessment clarification.
+The pipeline assumes the target application is already running and reachable.
 
 Environment variables:
 
-- `GEMINI_API_KEY` → used for LLM generation
-- `BASE_URL` → target application URL
-
----
-
-## Real-World Consideration
-
-In a production setup, CI would also:
-
-- Start backend and frontend services
-- Wait for service readiness
-- Run tests in an isolated environment
-
-This is intentionally omitted to align with assessment scope.
-
----
-
-## Project Structure
-scripts/
-generate_tests.py
-llm_client.py
-validator.py
-prompt_loader.py
-
-prompts/
-base.txt
-phase*.txt
-
-tests/
-api/
-web/
-
-docs/
-swagger.json
+- `GEMINI_API_KEY` -> Gemini access
+- `SWAGGER_PATH` -> optional Swagger path or URL
+- `FORCE_REGENERATE` -> regenerate specs even when valid ones already exist
+- `LLM_CACHE_VERSION` -> bump when prompt strategy changes
 
 ---
 
 ## Error Handling
 
 - Validation failures trigger one repair attempt
-- No retry loops beyond one repair
-- Invalid tests are skipped
+- Invalid outputs are skipped
+- Temporary Gemini failures such as rate limits are retried with backoff
+- Cached responses may be reused to reduce repeated API calls
 
 ---
 
@@ -199,9 +157,9 @@ swagger.json
 
 - No framework redesign
 - No Playwright config changes
-- No complex validation engines
+- No complex validation engine
 - No multi-LLM orchestration
-- No caching layers
+- No complex caching layer
 
 ---
 
@@ -210,6 +168,7 @@ swagger.json
 This system demonstrates:
 
 - AI-driven test generation
-- CI-integrated quality gate
-- Regeneratable test automation
-- Alignment with modern SDLC and STLC practices
+- contract-aware automation
+- deterministic test generation inputs
+- CI-integrated quality gating
+- simple rate-limit-aware caching

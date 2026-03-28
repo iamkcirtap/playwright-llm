@@ -3,6 +3,9 @@ Generate a Playwright API test.
 Endpoint:
 {{ENDPOINT}}
 
+Endpoint spec:
+{{ENDPOINT_SPEC}}
+
 Payload:
 {{PAYLOAD}}
 
@@ -27,5 +30,8 @@ Rules:
 - Self-contained test
 - Deterministic values
 - No placeholders
+- Prefer a single happy-path `test()` block
+- Use the Swagger response schema above to choose assertions instead of guessing
+- Return code only, with no markdown fences or explanation
 
 Return full .spec.ts file only.
