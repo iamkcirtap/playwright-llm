@@ -8,6 +8,9 @@ This repository generates Playwright tests with Google Gemini, validates the gen
   - [Table of Contents](#table-of-contents)
   - [What This Project Does](#what-this-project-does)
   - [Overall Design](#overall-design)
+  - [Reliability Layers](#reliability-layers)
+  - [Architecture Diagram](#architecture-diagram)
+  - [Mode Behavior Diagram](#mode-behavior-diagram)
   - [Design Notes](#design-notes)
     - [1. LLM Prompt Design](#1-llm-prompt-design)
     - [2. Swagger → Playwright Tests](#2-swagger--playwright-tests)
@@ -53,6 +56,67 @@ The design is intentionally simple:
 8. Save only valid `.spec.ts` files
 
 This keeps the solution deterministic, cheaper to run, and easier to explain.
+
+## Reliability Layers
+
+The architecture is intentionally split into two layers:
+
+1. Core pipeline: load contract, generate specs, validate/repair once, save, execute in CI.
+2. Reliability wrappers: model fallback, retry/backoff, strict CI failure mode, compile checks, and safe normalization for recurring mechanical issues.
+
+This keeps the baseline flow easy to understand while still protecting CI from common LLM failure modes.
+
+## Architecture Diagram
+
+```mermaid
+flowchart TD
+      A[Start: generate_tests.py] --> B[Load Swagger contract]
+      B --> C{Required endpoints present?}
+      C -- No --> X[Fail fast]
+      C -- Yes --> D[Generate API specs in parallel]
+      D --> E[Generate E2E checkout spec]
+
+      subgraph LLM[LLM Layer]
+         D1[Prompt build]
+         D2[Model fallback order]
+         D3[Retry/backoff]
+         D4{LLM success?}
+         D1 --> D2 --> D3 --> D4
+      end
+
+      D --> D1
+      E --> D1
+
+      D4 -- Yes --> N[Normalize known-safe patterns]
+      D4 -- No --> XF[Fail run: LLM exhausted]
+      N --> V[Validate generated code]
+      V --> R{Valid?}
+      R -- No --> Q[One repair attempt]
+      Q --> V
+      V -->|Still invalid| S{STRICT_GENERATION?}
+      S -- Yes --> X
+      S -- No --> SKIP[Skip file locally]
+
+      R -- Yes --> W[Write .spec.ts files]
+      W --> T[TypeScript compile check: tsc --noEmit]
+      T --> U{Compile passes?}
+      U -- No --> XC[Fail run: compile error]
+      U -- Yes --> P[Run Playwright API + Web tests]
+      P --> Z[Quality gate passed]
+```
+
+## Mode Behavior Diagram
+
+```mermaid
+flowchart TD
+   A[Generation/Validation fails] --> B{STRICT_GENERATION?}
+   B -- true (CI default) --> C[Fail build immediately]
+   B -- false (local default) --> D[Print warning and skip artifact]
+
+   E[Start run] --> F{FORCE_REGENERATE?}
+   F -- true (CI default) --> G[Always regenerate required specs]
+   F -- false (local default) --> H[Reuse existing valid specs]
+```
 
 ## Design Notes
 
@@ -231,8 +295,11 @@ Environment controls:
 
 - `FORCE_REGENERATE=true`
 - `STRICT_GENERATION=true|false`
+- `LLM_MODEL=gemini-2.5-flash,gemini-flash-latest,gemini-flash-lite-latest`
 - `LLM_CACHE_ENABLED=true|false`
 - `LLM_CACHE_DIR=.cache/llm`
+
+`LLM_MODEL` accepts a comma-separated fallback order. The generator tries models from left to right and automatically switches to the next model when the current model appears quota-limited.
 
 To invalidate old LLM cache entries, bump:
 
@@ -348,3 +415,4 @@ Other prompt files in [`prompts/`](prompts/) are currently kept as legacy or opt
 Fresh-generation proof:
 
 - The repo has been verified with repeated from-scratch generations by deleting generated specs, bumping `LLM_CACHE_VERSION`, regenerating through prompts, and rerunning `npm run quality:gate` successfully.
+

@@ -163,7 +163,7 @@ A generated test is valid if it:
 If invalid:
 
 - attempt one repair using Gemini
-- if still invalid, skip the file
+- if still invalid: in CI (`STRICT_GENERATION=true`) fail immediately; locally skip and continue
 
 ---
 
@@ -174,6 +174,7 @@ The pipeline assumes the target application is already running and reachable.
 Environment variables:
 
 - `GEMINI_API_KEY` -> Gemini access
+- `LLM_MODEL` -> comma-separated Gemini model fallback order
 - `SWAGGER_PATH` -> optional Swagger path or URL
 - `FORCE_REGENERATE` -> regenerate specs even when valid ones already exist
 - `STRICT_GENERATION` -> fail immediately when required specs cannot be regenerated

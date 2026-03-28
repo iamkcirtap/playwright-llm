@@ -15,6 +15,7 @@ jobs:
             SWAGGER_PATH: ${{ vars.SWAGGER_PATH }}
             STAGING_BASE_URL: ${{ vars.STAGING_BASE_URL }}
             STAGING_API_URL: ${{ vars.STAGING_API_URL }}
+            LLM_MODEL: gemini-2.5-flash,gemini-flash-latest,gemini-flash-lite-latest
             CI: true
             FORCE_REGENERATE: true
             LLM_CACHE_ENABLED: false

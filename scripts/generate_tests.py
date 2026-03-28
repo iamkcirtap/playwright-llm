@@ -4,18 +4,23 @@ This script is the main entry point for the generation flow. It:
 - loads the Swagger contract
 - checks that the required endpoints exist
 - adds known runtime notes when live behavior differs from Swagger
-- generates the required API and E2E specs with Gemini
+- generates the required API and E2E specs with Gemini (API endpoints run in parallel)
+- normalizes a few known-safe generated-code patterns before validation
 - validates generated output with endpoint-specific rules
 - repairs invalid output once
 - saves only valid `.spec.ts` files
+- runs a TypeScript compile check to catch type errors in generated code
 """
 
 import argparse
 import json
 import os
 import pathlib
+import re
 import shutil
 import subprocess
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Callable
 
 from prompt_loader import load_prompt, build_prompt
 from llm_client import call_llm
@@ -136,38 +141,55 @@ def ensure_required_endpoints_exist(allowed_api_endpoints: set[str]) -> None:
 
 
 def generate_api_tests(swagger_spec_dict: dict, allowed_api_endpoints: set[str]) -> None:
-    """Generate one API spec per required endpoint using fixed payloads."""
-    for endpoint in REQUIRED_API_ENDPOINTS:
-        existing_file_path = get_api_test_file_path(endpoint)
+    """Generate one API spec per required endpoint, running endpoints in parallel."""
+    with ThreadPoolExecutor(max_workers=len(REQUIRED_API_ENDPOINTS)) as executor:
+        futures = {
+            executor.submit(
+                generate_one_api_test,
+                endpoint,
+                swagger_spec_dict,
+                allowed_api_endpoints,
+            ): endpoint
+            for endpoint in REQUIRED_API_ENDPOINTS
+        }
+        for future in as_completed(futures):
+            future.result()  # re-raises any exception from the worker
 
-        if should_reuse_existing_spec(
+
+def generate_one_api_test(
+    endpoint: str,
+    swagger_spec_dict: dict,
+    allowed_api_endpoints: set[str],
+) -> None:
+    """Generate, validate, and save one API spec for a single endpoint."""
+    existing_file_path = get_api_test_file_path(endpoint)
+
+    if should_reuse_existing_spec(
+        existing_file_path,
+        allowed_api_endpoints=allowed_api_endpoints,
+        log_name=endpoint,
+    ):
+        return
+
+    endpoint_spec = extract_endpoint_spec(swagger_spec_dict, endpoint)
+    payload = DETERMINISTIC_PAYLOADS[endpoint]
+    test_code = generate_with_llm_guard(
+        f"endpoint '{endpoint}'",
+        lambda: generate_api_test(endpoint_spec, payload),
+    )
+
+    validated_code = validate_generated_spec(
+        test_code,
+        allowed_api_endpoints=allowed_api_endpoints,
+    )
+    if validated_code is None:
+        handle_generation_failure(
             existing_file_path,
-            allowed_api_endpoints=allowed_api_endpoints,
-            log_name=endpoint,
-        ):
-            continue
-
-        endpoint_spec = extract_endpoint_spec(swagger_spec_dict, endpoint)
-        payload = DETERMINISTIC_PAYLOADS[endpoint]
-        try:
-            test_code = generate_api_test(endpoint_spec, payload)
-        except Exception as llm_error:
-            raise RuntimeError(
-                f"LLM call failed for endpoint '{endpoint}': {llm_error}"
-            ) from llm_error
-
-        test_code = validate_generated_spec(
-            test_code,
-            allowed_api_endpoints=allowed_api_endpoints,
+            f"API test generation for endpoint '{endpoint}' failed after validation/repair.",
         )
-        if test_code is None:
-            handle_generation_failure(
-                existing_file_path,
-                f"API test generation for endpoint '{endpoint}' failed after validation/repair.",
-            )
-            continue
+        return
 
-        save_spec_file(get_api_test_file_path(endpoint), test_code)
+    save_spec_file(existing_file_path, validated_code)
 
 
 def generate_api_test(endpoint_spec: dict, payload: dict) -> str:
@@ -204,25 +226,31 @@ def generate_e2e_tests() -> None:
     ):
         return
 
-    try:
-        test_code = generate_e2e_test(CHECKOUT_E2E_PLAN)
-    except Exception as llm_error:
-        raise RuntimeError(
-            f"LLM call failed for E2E flow '{CHECKOUT_E2E_PLAN['flow']}': {llm_error}"
-        ) from llm_error
+    test_code = generate_with_llm_guard(
+        f"E2E flow '{CHECKOUT_E2E_PLAN['flow']}'",
+        lambda: generate_e2e_test(CHECKOUT_E2E_PLAN),
+    )
 
-    test_code = validate_generated_spec(
+    validated_code = validate_generated_spec(
         test_code,
         require_e2e_structure=True,
     )
-    if test_code is None:
+    if validated_code is None:
         handle_generation_failure(
             existing_file_path,
             f"E2E test generation for '{CHECKOUT_E2E_PLAN['flow']}' failed after validation/repair.",
         )
         return
 
-    save_spec_file(get_e2e_test_file_path(CHECKOUT_E2E_PLAN["flow"]), test_code)
+    save_spec_file(existing_file_path, validated_code)
+
+
+def generate_with_llm_guard(target_name: str, generator: Callable[[], str]) -> str:
+    """Wrap LLM calls with a clear, target-specific failure message."""
+    try:
+        return generator()
+    except Exception as llm_error:
+        raise RuntimeError(f"LLM call failed for {target_name}: {llm_error}") from llm_error
 
 
 def generate_e2e_test(e2e_test_plan: dict) -> str:
@@ -283,11 +311,42 @@ def validate_generated_spec(
     Validation enforces route allowlists plus endpoint-specific API assertions
     or the required checkout-flow structure for E2E specs.
     """
+    normalized_code = normalize_generated_import_paths(test_code)
+
     return validator.validate_and_repair_test_cases(
-        test_code,
+        normalized_code,
         allowed_api_endpoints=allowed_api_endpoints,
         require_e2e_structure=require_e2e_structure,
     )
+
+
+def normalize_generated_import_paths(test_code: str) -> str:
+    """Normalize a small set of safe, common generated-code mistakes."""
+    normalized_code = test_code
+    replacements = {
+        "from '../utils/": "from '../../utils/",
+        'from "../utils/': 'from "../../utils/',
+    }
+    for old_value, new_value in replacements.items():
+        normalized_code = normalized_code.replace(old_value, new_value)
+
+    # Remove a common invalid E2E pattern where the model instantiates
+    # ApiHelper without the required request context.
+    if "new ApiHelper();" in normalized_code:
+        normalized_code = re.sub(
+            r"^\s*import\s*\{\s*ApiHelper\s*\}\s*from\s*['\"]\.\./\.\./utils/api-helper['\"];\s*\n?",
+            "",
+            normalized_code,
+            flags=re.MULTILINE,
+        )
+        normalized_code = re.sub(
+            r"^\s*const\s+apiHelper\s*=\s*new\s+ApiHelper\(\);\s*\n?",
+            "",
+            normalized_code,
+            flags=re.MULTILINE,
+        )
+
+    return normalized_code
 
 
 def handle_generation_failure(file_path: pathlib.Path, message: str) -> None:
