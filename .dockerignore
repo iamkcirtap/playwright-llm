@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+
+# Generated test files — always regenerated inside the container
+tests/api/
+tests/web/
+
+# Build artifacts and reports
+test-results/
+playwright-report/
+
+# LLM cache — not needed in the container
+.cache/
+
+# Local env file — secrets must be passed via -e or --env-file at run time
+.env
+.env.local
+.env.*
+!.env.example
+
+# Python cache
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+
+# IDE and OS noise
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.log

@@ -1,24 +1,14 @@
-You are analyzing Swagger and application behavior.
-
-Goal:
-Prepare a generation plan for Playwright tests.
+Prepare a minimal Playwright generation plan from Swagger and runtime context.
 
 Rules:
-- Enumerate API endpoints from the provided Swagger input
-- Include only supported `/api/...` routes found in the contract
-- Cover at minimum:
-  /api/checkout
-  /api/validate-card
-  /api/validate-email
-- Do not include `/api/health` in the API generation plan
-- Prefer runtime behavior over Swagger when conflicts exist
-- Use realistic but deterministic request payloads
-- Choose stable response assertions from schema-defined fields when possible
-- Keep the plan minimal, machine-readable, and complete
-- The E2E flow should represent one stable checkout happy path
-- The checkout UI uses fields: email, cardNumber, expiry, cvv, amount
-- The backend also exposes `/api/health`, but it must be excluded from generation output
-- Keep minimal but complete
+- Include only supported /api/... routes from the contract
+- Must cover /api/checkout, /api/validate-card, /api/validate-email
+- Exclude /api/health
+- Prefer runtime behavior over Swagger when they conflict
+- Use deterministic realistic payloads
+- Choose stable schema-based assertions when possible
+- Include one stable checkout happy-path E2E flow using email, cardNumber, expiry, cvv, amount
+- Keep output minimal, complete, and machine-readable
 
 Return JSON only:
 {

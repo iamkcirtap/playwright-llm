@@ -5,15 +5,14 @@ Plan:
 
 Rules:
 - Frontend target is the checkout page on `http://localhost:3000`
-- Backend validations are asynchronous and may validate email and card inputs during entry
 - The checkout flow should cover one stable happy path only
-- Fill:
-  email, cardNumber, expiry, cvv, amount
-- Submit form
-- Assert a visible success state that reflects successful checkout
-- Do not guess button labels, success text, or validation text unless they are explicitly grounded in the provided plan or observed UI context
-- Prefer waiting for visible validation or success UI states rather than using timeouts
-- Respect soft-fail behavior if email validation warnings appear but do not block checkout
+- Use the sample values from the plan when they are provided
+- Fill: email, cardNumber, expiry, cvv, amount
+- Submit the form
+- Assert a visible success state using the rendered message that contains `✅` and `Payment processed successfully!`
+- Do not guess labels, success text, or validation text unless the plan or UI context supports them
+- Prefer visible UI-state waiting over timeouts
+- Prefer `button[type="submit"]` for form submission when present
 
 Selector priority:
 1. input[name]
@@ -26,7 +25,7 @@ Constraints:
 - Use stable interactions
 - Avoid brittle CSS chains unless no better selector exists
 - Do not assert decorative text or unstable transient UI
-- Keep the test deterministic and minimal
-- Return code only, with no markdown fences or explanation
+- Keep deterministic and minimal
+- Return code only. No markdown fences. No explanation.
 
 Return runnable .spec.ts only.

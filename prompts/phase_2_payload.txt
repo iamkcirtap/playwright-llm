@@ -1,15 +1,15 @@
-Generate a valid request payload for this endpoint:
+Generate a deterministic valid payload for this Playwright API endpoint:
 
 {{ENDPOINT}}
 
 Rules:
 - Use realistic values
-- Follow expected formats:
-  email → valid email
-  card → numeric string
-  expiry → MM/YY
-  cvv → 3 digits
-  amount → positive number
-- Keep minimal fields required
+- Keep only required fields
+- Follow formats:
+  - email: valid email
+  - card: numeric string
+  - expiry: MM/YY
+  - cvv: 3 digits
+  - amount: positive number
 
 Return JSON only.

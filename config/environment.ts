@@ -3,6 +3,47 @@
  * Configure different environments for your tests
  */
 
+import { existsSync, readFileSync } from 'node:fs';
+
+function loadLocalEnvFile(): void {
+    const envPath = '.env';
+    if (!existsSync(envPath)) {
+        return;
+    }
+
+    const fileContent = readFileSync(envPath, 'utf-8');
+    for (const rawLine of fileContent.split(/\r?\n/)) {
+        const line = rawLine.trim();
+        if (!line || line.startsWith('#')) {
+            continue;
+        }
+
+        const equalsIndex = line.indexOf('=');
+        if (equalsIndex <= 0) {
+            continue;
+        }
+
+        const key = line.slice(0, equalsIndex).trim();
+        if (!key || process.env[key] !== undefined) {
+            continue;
+        }
+
+        let value = line.slice(equalsIndex + 1).trim();
+        const isWrappedInMatchingQuotes =
+            value.length >= 2 &&
+            ((value.startsWith('"') && value.endsWith('"')) ||
+                (value.startsWith("'") && value.endsWith("'")));
+        if (isWrappedInMatchingQuotes) {
+            value = value.slice(1, -1);
+        }
+
+        process.env[key] = value;
+    }
+}
+
+// Load local .env values for local runs before reading process.env defaults.
+loadLocalEnvFile();
+
 type Environment = 'staging' | 'uat' | 'production';
 
 interface EnvironmentConfig {

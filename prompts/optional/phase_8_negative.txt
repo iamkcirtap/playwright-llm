@@ -1,11 +1,10 @@
-Generate one negative test for:
+Generate one negative Playwright test for:
 
 {{ENDPOINT}}
 
 Rules:
 - use invalid input
 - assert error response
-- keep minimal
-- runnable test
+- keep it minimal and runnable
 
 Return full .spec.ts only.

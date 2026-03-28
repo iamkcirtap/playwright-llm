@@ -1,5 +1,24 @@
 # AGENTS.md
 
+## Table of Contents
+
+- [Overview](#overview)
+- [Core Objective](#core-objective)
+- [Constraints](#constraints)
+- [Required Coverage](#required-coverage)
+- [Source Of Truth](#source-of-truth)
+- [Test Design Rules](#test-design-rules)
+  - [API Tests](#api-tests)
+  - [E2E Tests](#e2e-tests)
+- [Determinism Rules](#determinism-rules)
+- [Generation Flow](#generation-flow)
+- [Active Prompts](#active-prompts)
+- [Validation Rules](#validation-rules)
+- [Environment Assumption](#environment-assumption)
+- [Error Handling](#error-handling)
+- [Non-Goals](#non-goals)
+- [Summary](#summary)
+
 ## Overview
 
 This repository implements an AI-driven Playwright test generation pipeline using Google Gemini.
@@ -64,6 +83,7 @@ Additionally:
 - Assert HTTP status
 - Assert at least one meaningful response field
 - Keep each test self-contained
+- Prefer actual runtime behavior when it differs from Swagger
 
 ### E2E Tests
 
@@ -113,6 +133,19 @@ Avoid:
 
 ---
 
+## Active Prompts
+
+The current runtime flow uses only these prompt files:
+
+- `prompts/base_lean.txt`
+- `prompts/phase_3_api.txt`
+- `prompts/phase_4_e2e.txt`
+- `prompts/phase_6_repair.txt`
+
+Other prompt files may remain in the repository as legacy or optional references, but they are not loaded by the current generation flow.
+
+---
+
 ## Validation Rules
 
 A generated test is valid if it:
@@ -122,7 +155,10 @@ A generated test is valid if it:
 - contains imports
 - has no placeholders or TODOs
 - references only allowed API routes for API specs
+- asserts the expected HTTP status for each required API route
+- asserts at least one stable response field for each required API route
 - includes the required checkout structure for E2E specs
+- submits the checkout form and asserts a visible success state for E2E specs
 
 If invalid:
 
@@ -140,6 +176,9 @@ Environment variables:
 - `GEMINI_API_KEY` -> Gemini access
 - `SWAGGER_PATH` -> optional Swagger path or URL
 - `FORCE_REGENERATE` -> regenerate specs even when valid ones already exist
+- `STRICT_GENERATION` -> fail immediately when required specs cannot be regenerated
+- `LLM_CACHE_ENABLED` -> enable or disable local LLM response caching
+- `LLM_CACHE_DIR` -> optional cache directory path
 - `LLM_CACHE_VERSION` -> bump when prompt strategy changes
 
 ---

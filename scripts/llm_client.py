@@ -4,6 +4,9 @@ This module keeps the LLM integration simple by handling:
 - API key loading
 - retry-with-backoff for temporary failures
 - versioned file-based caching for repeated runs
+
+The cache is intentionally readable and lightweight so prompt-strategy changes
+can be managed by bumping `LLM_CACHE_VERSION`.
 """
 
 import os
@@ -12,14 +15,28 @@ from pathlib import Path
 from typing import Any
 
 from google.genai import Client, types
+from env_loader import load_local_env
+
+
+# Load local .env values for local runs before reading os.getenv defaults.
+load_local_env()
+
+
+def read_bool_env(var_name: str, default: bool = False) -> bool:
+    """Read a boolean-like env value such as 1/true/yes."""
+    raw_value = os.getenv(var_name)
+    if raw_value is None:
+        return default
+    return raw_value.strip().lower() in {"1", "true", "yes"}
 
 MODEL_NAME = "gemini-2.5-flash"
 DEFAULT_MAX_OUTPUT_TOKENS = int(os.getenv("LLM_MAX_OUTPUT_TOKENS", "4096"))
 MAX_RETRY_ATTEMPTS = int(os.getenv("LLM_MAX_RETRIES", "4"))
 INITIAL_RETRY_DELAY_SECONDS = float(os.getenv("LLM_RETRY_INITIAL_DELAY", "1"))
 MAX_RETRY_DELAY_SECONDS = float(os.getenv("LLM_RETRY_MAX_DELAY", "8"))
+IS_CI = read_bool_env("CI") or read_bool_env("GITHUB_ACTIONS")
 CACHE_DIR = Path(os.getenv("LLM_CACHE_DIR", ".cache/llm"))
-USE_CACHE = os.getenv("LLM_CACHE_ENABLED", "true").lower() in {"1", "true", "yes"}
+USE_CACHE = read_bool_env("LLM_CACHE_ENABLED", default=not IS_CI)
 CACHE_VERSION = os.getenv("LLM_CACHE_VERSION", "v1")
 
 
@@ -107,6 +124,10 @@ def call_llm(
             )
             time.sleep(delay_seconds)
             delay_seconds = min(delay_seconds * 2, MAX_RETRY_DELAY_SECONDS)
+
+    # Defensive fallback for static analysis; normal control flow should
+    # already return in try-blocks or raise in the final retry.
+    raise RuntimeError("LLM request ended without producing a response.")
 
 
 def extract_response(response: Any) -> str:

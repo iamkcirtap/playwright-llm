@@ -11,5 +11,7 @@ Rules:
 - fix syntax, selectors, async usage
 - ensure runnable
 - include assertions
+- do not invent UI text or exact API error messages unless they are provided in the error context
+- return code only
 
 Return corrected code only.

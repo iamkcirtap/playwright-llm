@@ -1,9 +1,9 @@
-Ensure this test is safe for regeneration.
+Make this Playwright test safe for regeneration.
 
 Rules:
-- no hardcoded environment-specific values
+- no environment-specific hardcoding
 - no fragile selectors
-- no dependencies on test order
-- minimal assumptions
+- no test-order dependencies
+- keep assumptions minimal
 
 Return updated code only.

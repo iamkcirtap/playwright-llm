@@ -3,15 +3,19 @@
 This script is the main entry point for the generation flow. It:
 - loads the Swagger contract
 - checks that the required endpoints exist
+- adds known runtime notes when live behavior differs from Swagger
 - generates the required API and E2E specs with Gemini
-- validates generated output
+- validates generated output with endpoint-specific rules
 - repairs invalid output once
 - saves only valid `.spec.ts` files
 """
 
+import argparse
 import json
 import os
 import pathlib
+import shutil
+import subprocess
 
 from prompt_loader import load_prompt, build_prompt
 from llm_client import call_llm
@@ -26,7 +30,6 @@ import validator
 BASE_PROMPT_NAME = "base_lean"
 API_TESTS_DIR = pathlib.Path("tests") / "api"
 WEB_TESTS_DIR = pathlib.Path("tests") / "web"
-FORCE_REGENERATE = os.getenv("FORCE_REGENERATE", "").lower() in {"1", "true", "yes"}
 REQUIRED_API_ENDPOINTS = [
     "/api/checkout",
     "/api/validate-card",
@@ -35,10 +38,16 @@ REQUIRED_API_ENDPOINTS = [
 CHECKOUT_E2E_PLAN = {
     "flow": "checkout",
     "requiredFields": ["email", "cardNumber", "expiry", "cvv", "amount"],
+    "sampleValues": {
+        "email": "buyer@example.com",
+        "cardNumber": "4242424242424242",
+        "expiry": "12/34",
+        "cvv": "123",
+        "amount": "100.00",
+    },
 }
 DETERMINISTIC_PAYLOADS = {
     "/api/checkout": {
-        "email": "buyer@example.com",
         "cardNumber": "4242424242424242",
         "expiry": "12/34",
         "cvv": "123",
@@ -51,18 +60,65 @@ DETERMINISTIC_PAYLOADS = {
         "email": "buyer@example.com",
     },
 }
- 
-def main():
+RUNTIME_NOTES = {
+    "/api/checkout": (
+        "Runtime request body uses only cardNumber, expiry, cvv, and amount. "
+        "Do not send email to /api/checkout."
+    ),
+    "/api/validate-card": (
+        "Runtime behavior returns HTTP 200 for a valid card with a response message of "
+        "'Card number validated'."
+    ),
+    "/api/validate-email": (
+        "Runtime behavior returns HTTP 500 with an error payload when email validation is called. "
+        "Prefer real runtime behavior over Swagger's documented 200 response."
+    ),
+}
+
+
+def read_bool_env(var_name: str, default: bool = False) -> bool:
+    """Read a boolean-like env value such as 1/true/yes."""
+    raw_value = os.getenv(var_name)
+    if raw_value is None:
+        return default
+    return raw_value.strip().lower() in {"1", "true", "yes"}
+
+
+IS_CI = read_bool_env("CI") or read_bool_env("GITHUB_ACTIONS")
+FORCE_REGENERATE = read_bool_env("FORCE_REGENERATE", default=IS_CI)
+STRICT_GENERATION = read_bool_env("STRICT_GENERATION", default=IS_CI)
+
+
+def main() -> None:
     """Run the end-to-end generation workflow."""
-    swagger_source = resolve_swagger_source()
+    cli_args = parse_cli_args()
+    swagger_source = resolve_swagger_source(cli_args.swagger_source)
     swagger_spec_dict = load_swagger_spec_dict(swagger_source)
     allowed_api_endpoints = extract_api_endpoints(swagger_spec_dict)
     ensure_required_endpoints_exist(allowed_api_endpoints)
 
     generate_api_tests(swagger_spec_dict, allowed_api_endpoints)
     generate_e2e_tests()
+    run_typescript_compile_check()
 
     print("Test case generation completed successfully.")
+
+
+def parse_cli_args() -> argparse.Namespace:
+    """Parse command-line options for this script.
+
+    Keeping argument parsing in this file makes the execution flow easier to
+    follow for beginners.
+    """
+    parser = argparse.ArgumentParser(
+        description="Generate Playwright tests from Swagger and prompts."
+    )
+    parser.add_argument(
+        "--swagger",
+        dest="swagger_source",
+        help="Path or URL to the Swagger/OpenAPI JSON file.",
+    )
+    return parser.parse_args()
 
 
 def ensure_required_endpoints_exist(allowed_api_endpoints: set[str]) -> None:
@@ -79,34 +135,47 @@ def ensure_required_endpoints_exist(allowed_api_endpoints: set[str]) -> None:
         )
 
 
-def generate_api_tests(swagger_spec_dict: dict, allowed_api_endpoints: set[str]):
-    """Generate one API spec per required endpoint."""
+def generate_api_tests(swagger_spec_dict: dict, allowed_api_endpoints: set[str]) -> None:
+    """Generate one API spec per required endpoint using fixed payloads."""
     for endpoint in REQUIRED_API_ENDPOINTS:
         existing_file_path = get_api_test_file_path(endpoint)
 
-        if not FORCE_REGENERATE and existing_file_path.is_file():
-            existing_code = existing_file_path.read_text(encoding="utf-8")
-            if validator.validate_test_cases(existing_code, allowed_api_endpoints=allowed_api_endpoints):
-                print(f"Skipping regeneration for '{endpoint}' because an existing valid spec already exists.")
-                continue
+        if should_reuse_existing_spec(
+            existing_file_path,
+            allowed_api_endpoints=allowed_api_endpoints,
+            log_name=endpoint,
+        ):
+            continue
 
         endpoint_spec = extract_endpoint_spec(swagger_spec_dict, endpoint)
         payload = DETERMINISTIC_PAYLOADS[endpoint]
-        test_code = generate_api_test(endpoint_spec, payload)
+        try:
+            test_code = generate_api_test(endpoint_spec, payload)
+        except Exception as llm_error:
+            raise RuntimeError(
+                f"LLM call failed for endpoint '{endpoint}': {llm_error}"
+            ) from llm_error
 
-        test_code = validator.validate_and_repair_test_cases(
+        test_code = validate_generated_spec(
             test_code,
             allowed_api_endpoints=allowed_api_endpoints,
         )
         if test_code is None:
-            print(f"Skipping API test generation for endpoint '{endpoint}' after validation/repair failed.")
+            handle_generation_failure(
+                existing_file_path,
+                f"API test generation for endpoint '{endpoint}' failed after validation/repair.",
+            )
             continue
 
-        save_api_test(endpoint, test_code)
+        save_spec_file(get_api_test_file_path(endpoint), test_code)
 
 
 def generate_api_test(endpoint_spec: dict, payload: dict) -> str:
-    """Build the API prompt for one endpoint and ask Gemini for a spec file."""
+    """Build the API prompt for one endpoint and ask Gemini for a spec file.
+
+    Runtime notes are included so generation can follow observed application
+    behavior when it differs from the Swagger contract.
+    """
     base_prompt = load_prompt(BASE_PROMPT_NAME)
     phase3_prompt = load_prompt("phase_3_api")
 
@@ -117,36 +186,43 @@ def generate_api_test(endpoint_spec: dict, payload: dict) -> str:
             "ENDPOINT": endpoint_spec["endpoint"],
             "ENDPOINT_SPEC": json.dumps(endpoint_spec, indent=2),
             "PAYLOAD": json.dumps(payload, indent=2),
+            "RUNTIME_NOTES": RUNTIME_NOTES.get(endpoint_spec["endpoint"], "No additional runtime notes."),
         },
     )
     endpoint_cache_key = endpoint_spec["endpoint"].strip("/").replace("/", "_")
     return call_llm(prompt, cache_key=f"api_{endpoint_cache_key}")
 
 
-def generate_e2e_tests():
+def generate_e2e_tests() -> None:
     """Generate the single required checkout E2E spec."""
     existing_file_path = get_e2e_test_file_path(CHECKOUT_E2E_PLAN["flow"])
 
-    if not FORCE_REGENERATE and existing_file_path.is_file():
-        existing_code = existing_file_path.read_text(encoding="utf-8")
-        if validator.validate_test_cases(existing_code, require_e2e_structure=True):
-            print(
-                f"Skipping regeneration for E2E flow '{CHECKOUT_E2E_PLAN['flow']}' "
-                "because an existing valid spec already exists."
-            )
-            return
+    if should_reuse_existing_spec(
+        existing_file_path,
+        require_e2e_structure=True,
+        log_name=f"E2E flow '{CHECKOUT_E2E_PLAN['flow']}'",
+    ):
+        return
 
-    test_code = generate_e2e_test(CHECKOUT_E2E_PLAN)
+    try:
+        test_code = generate_e2e_test(CHECKOUT_E2E_PLAN)
+    except Exception as llm_error:
+        raise RuntimeError(
+            f"LLM call failed for E2E flow '{CHECKOUT_E2E_PLAN['flow']}': {llm_error}"
+        ) from llm_error
 
-    test_code = validator.validate_and_repair_test_cases(
+    test_code = validate_generated_spec(
         test_code,
         require_e2e_structure=True,
     )
     if test_code is None:
-        print(f"Skipping E2E test generation for '{CHECKOUT_E2E_PLAN['flow']}' after validation/repair failed.")
+        handle_generation_failure(
+            existing_file_path,
+            f"E2E test generation for '{CHECKOUT_E2E_PLAN['flow']}' failed after validation/repair.",
+        )
         return
 
-    save_e2e_test(CHECKOUT_E2E_PLAN["flow"], test_code)
+    save_spec_file(get_e2e_test_file_path(CHECKOUT_E2E_PLAN["flow"]), test_code)
 
 
 def generate_e2e_test(e2e_test_plan: dict) -> str:
@@ -158,20 +234,92 @@ def generate_e2e_test(e2e_test_plan: dict) -> str:
     return call_llm(prompt, cache_key=f"e2e_{e2e_test_plan['flow']}")
 
 
-def save_api_test(endpoint: str, test_code: str):
-    """Write a generated API spec to the expected tests/api path."""
-    file_path = get_api_test_file_path(endpoint)
+def save_spec_file(file_path: pathlib.Path, test_code: str) -> None:
+    """Write generated test code to disk."""
     file_path.parent.mkdir(parents=True, exist_ok=True)
     with open(file_path, "w", encoding="utf-8") as f:
         f.write(test_code)
 
 
-def save_e2e_test(test_name: str, test_code: str):
-    """Write a generated E2E spec to the expected tests/web path."""
-    file_path = get_e2e_test_file_path(test_name)
-    file_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(file_path, "w", encoding="utf-8") as f:
-        f.write(test_code)
+def run_typescript_compile_check() -> None:
+    """Fail fast when generated specs introduce TypeScript compile errors."""
+    npx_executable = shutil.which("npx") or shutil.which("npx.cmd")
+    if npx_executable:
+        command = [npx_executable, "tsc", "--noEmit"]
+    else:
+        local_tsc = pathlib.Path("node_modules/.bin/tsc.cmd")
+        if not local_tsc.exists():
+            local_tsc = pathlib.Path("node_modules/.bin/tsc")
+        if not local_tsc.exists():
+            raise RuntimeError(
+                "TypeScript compile check could not find npx or a local tsc binary."
+            )
+        command = [str(local_tsc), "--noEmit"]
+
+    result = subprocess.run(
+        command,
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=pathlib.Path.cwd(),
+    )
+    if result.returncode == 0:
+        return
+
+    compiler_output = (result.stdout or result.stderr).strip()
+    raise RuntimeError(
+        "Generated specs failed the TypeScript compile check.\n"
+        f"{compiler_output}"
+    )
+
+
+def validate_generated_spec(
+    test_code: str,
+    allowed_api_endpoints: set[str] | None = None,
+    require_e2e_structure: bool = False,
+) -> str | None:
+    """Run validation with one repair attempt and return final code or None.
+
+    Validation enforces route allowlists plus endpoint-specific API assertions
+    or the required checkout-flow structure for E2E specs.
+    """
+    return validator.validate_and_repair_test_cases(
+        test_code,
+        allowed_api_endpoints=allowed_api_endpoints,
+        require_e2e_structure=require_e2e_structure,
+    )
+
+
+def handle_generation_failure(file_path: pathlib.Path, message: str) -> None:
+    """Fail strictly in CI and avoid silently reusing stale artifacts there."""
+    if STRICT_GENERATION:
+        if FORCE_REGENERATE and file_path.exists():
+            file_path.unlink()
+        raise RuntimeError(message)
+
+    print(message)
+
+
+def should_reuse_existing_spec(
+    file_path: pathlib.Path,
+    allowed_api_endpoints: set[str] | None = None,
+    require_e2e_structure: bool = False,
+    log_name: str = "spec",
+) -> bool:
+    """Return True when an existing file is valid and can be reused."""
+    if FORCE_REGENERATE or not file_path.is_file():
+        return False
+
+    existing_code = file_path.read_text(encoding="utf-8")
+    is_valid = validator.validate_test_cases(
+        existing_code,
+        allowed_api_endpoints=allowed_api_endpoints,
+        require_e2e_structure=require_e2e_structure,
+    )
+    if is_valid:
+        print(f"Skipping regeneration for '{log_name}' because an existing valid spec already exists.")
+        return True
+    return False
 
 
 def get_api_test_file_path(endpoint: str) -> pathlib.Path:

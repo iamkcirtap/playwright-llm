@@ -6,6 +6,7 @@ results.xml
 screenshots/
 videos/
 coverage/
+.cache/
 .env
 .env.local
 .env.*

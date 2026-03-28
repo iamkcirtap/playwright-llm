@@ -4,9 +4,11 @@ This module supports:
 - loading Swagger from a URL or local file
 - updating a local fallback copy
 - extracting API routes and endpoint-specific contract details
+
+The generator may still apply runtime notes on top of this contract when the
+real application behavior is known to differ from Swagger.
 """
 
-import argparse
 import json
 import os
 import pathlib
@@ -16,21 +18,24 @@ DEFAULT_SWAGGER_PATH = pathlib.Path("swagger") / "spec.json"
 DEFAULT_SWAGGER_URL = "http://localhost:8080/swagger.json"
 
 
-def resolve_swagger_source() -> str:
-    """Resolve the Swagger source from CLI args, env var, or default URL."""
-    parser = argparse.ArgumentParser(description="Generate Playwright tests from Swagger and prompts.")
-    parser.add_argument(
-        "--swagger",
-        dest="swagger_source",
-        help="Path or URL to the Swagger/OpenAPI JSON file.",
-    )
-    args = parser.parse_args()
-
-    swagger_source = args.swagger_source or os.getenv("SWAGGER_PATH")
+def resolve_swagger_source(cli_swagger_source: str | None = None) -> str:
+    """Resolve Swagger source from CLI value, env var, or default URL."""
+    swagger_source = cli_swagger_source or os.getenv("SWAGGER_PATH")
     if swagger_source:
         return swagger_source
 
     return DEFAULT_SWAGGER_URL
+
+
+def extract_schema_definitions(swagger_spec: dict) -> dict:
+    """Return schema definitions for Swagger 2 or OpenAPI 3 docs."""
+    definitions = swagger_spec.get("definitions")
+    if isinstance(definitions, dict):
+        return definitions
+
+    components = swagger_spec.get("components", {})
+    schemas = components.get("schemas", {}) if isinstance(components, dict) else {}
+    return schemas if isinstance(schemas, dict) else {}
 
 
 def load_swagger_spec_dict(swagger_source: str) -> dict:
@@ -101,6 +106,6 @@ def extract_endpoint_spec(swagger_spec: dict, endpoint: str) -> dict:
     return {
         "endpoint": endpoint,
         "path": path_item,
-        "definitions": swagger_spec.get("definitions", {}),
+        "definitions": extract_schema_definitions(swagger_spec),
         "methods": supported_methods,
     }

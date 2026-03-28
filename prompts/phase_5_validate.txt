@@ -1,12 +1,11 @@
-Validate this Playwright test.
+Validate this Playwright test file.
 
 Check:
-- contains test() or expect()
+- contains test() and expect()
 - contains import or require
-- contains TODO or FIXME
+- no TODO, FIXME, or placeholders
 - valid syntax
-- no placeholders
-- uses valid selectors
+- selectors look valid
 
 Return:
 VALID

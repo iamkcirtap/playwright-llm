@@ -5,7 +5,11 @@
     "main": "index.js",
     "scripts": {
         "generate": "python scripts/generate_tests.py",
+        "generate:local": "cross-env FORCE_REGENERATE=false LLM_CACHE_ENABLED=true python scripts/generate_tests.py",
+        "generate:ci": "cross-env CI=true FORCE_REGENERATE=true STRICT_GENERATION=true LLM_CACHE_ENABLED=false python scripts/generate_tests.py",
         "quality:gate": "npm run generate && npm run test:api && npm run test:web",
+        "quality:gate:local": "npm run generate:local && npm run test:api && npm run test:web",
+        "quality:gate:ci": "npm run generate:ci && npm run test:api && npm run test:web",
         "test": "playwright test",
         "test:headed": "playwright test --headed",
         "test:ui": "playwright test --ui",

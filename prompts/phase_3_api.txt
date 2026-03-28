@@ -9,29 +9,29 @@ Endpoint spec:
 Payload:
 {{PAYLOAD}}
 
+Runtime notes:
+{{RUNTIME_NOTES}}
+
 Rules:
 - Use the provided endpoint exactly as given
-- Prefer importing and using `ApiHelper` from `../../utils/api-helper` for API requests
+- Import `ApiHelper` as a named import from `../../utils/api-helper`
+- When using `ApiHelper`, construct it from Playwright's `request` fixture
+- Wrap the test in `test.describe('<endpoint> API', ...)`
+- Parse the JSON response into `const body = await response.json()`
 - Use relative API endpoints such as `/api/checkout`, never absolute URLs such as `http://localhost:8080/api/checkout`
-- For GET endpoints, use `apiHelper.get(endpoint)`
-- For POST endpoints, use `apiHelper.post(endpoint, payload)`
+- For GET: use `apiHelper.get(endpoint)`
+- For POST: use `apiHelper.post(endpoint, payload)`
 - Treat the provided payload as authoritative for the request body
-- Send the request with the provided payload
-- Prefer Swagger response schema when choosing assertions
-- Assert:
-  - status code
-  - 1-2 meaningful stable response fields only
-- Assert only fields that are likely present in the real response schema
-- Prefer fields such as `success`, `valid`, `status`, `message`, or other stable contract fields
+- Prefer runtime notes when they conflict with Swagger
+- Otherwise prefer Swagger response schema when choosing assertions
+- Assert the status code and 1-2 stable response fields only
+- Prefer stable fields such as `success`, `valid`, `status`, `message`, or `error`
+- Generate exactly one deterministic happy-path test for the endpoint
+- Do not add extra negative, edge-case, or missing-field tests
 - Do not invent request or response properties
 - Do not assert generated IDs, timestamps, or unstable text unless clearly stable
-- Use Playwright request testing patterns
-- Keep the test compatible with the existing helper implementation
-- Self-contained test
-- Deterministic values
-- No placeholders
-- Prefer a single happy-path `test()` block
-- Use the Swagger response schema above to choose assertions instead of guessing
-- Return code only, with no markdown fences or explanation
+- Do not assert an exact error message unless the runtime notes explicitly give that exact string
+- Keep output self-contained, deterministic, and runnable
+- Return code only. No markdown fences. No explanation.
 
 Return full .spec.ts file only.
