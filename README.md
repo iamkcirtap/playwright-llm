@@ -31,6 +31,7 @@ This repository generates Playwright tests with Google Gemini, validates the gen
   - [CI / Quality Gate](#ci--quality-gate)
     - [GitHub Actions Setup](#github-actions-setup)
   - [Repository Rules](#repository-rules)
+  - [How This Compares To Broader AI Test Generators](#how-this-compares-to-broader-ai-test-generators)
   - [Prompt Files In Use](#prompt-files-in-use)
   - [Why This Is A Good Solution](#why-this-is-a-good-solution)
 
@@ -394,6 +395,20 @@ Known runtime notes applied by the generator:
 
 - `/api/checkout` runtime requests use `cardNumber`, `expiry`, `cvv`, and `amount` only
 - `/api/validate-email` returns HTTP `500` with an error payload at runtime, so generation must prefer runtime behavior over the Swagger `200` schema
+
+## How This Compares To Broader AI Test Generators
+
+There are broader AI-assisted testing examples and frameworks that aim to be reusable products. Those tools often focus on natural-language step definitions, richer CLI options, reusable scenario packs, more caching modes, HTML cleanup, reporting, mock execution, or cost analytics.
+
+This repository is intentionally narrower.
+
+- It is built around a fixed assessment scope rather than a generic test-authoring platform
+- It uses Swagger and deterministic payloads as the primary grounding mechanism
+- It validates generated code before keeping it
+- It adds a TypeScript compile gate before Playwright execution
+- It treats CI reproducibility and explicit failure behavior as first-class requirements
+
+So compared with broader examples, this project is less feature-rich as a framework, but stronger as a focused, reliability-first generation pipeline. The design choice was deliberate: prioritize determinism, explainability, and quality gating over building a larger AI testing product.
 
 ## Prompt Files In Use
 
