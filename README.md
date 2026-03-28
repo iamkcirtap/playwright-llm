@@ -37,12 +37,6 @@ This keeps the solution deterministic, cheaper to run, and easier to explain in 
 - [`scripts/validator.py`](scripts/validator.py)
   Checks if generated code looks runnable, explains what failed, and performs one repair attempt if needed.
 
-## Natural Interview Explanation
-
-You can say this out loud:
-
-"This repo is a small AI-assisted test generator for a payment app. I load the Swagger contract, keep the scope limited to the required endpoints, use fixed payloads for determinism, and ask Gemini to generate Playwright specs. Then I validate the output, repair it once if needed, and run the saved tests in CI. To reduce rate-limit issues, I reuse valid files and cache named LLM responses."
-
 ## System Under Test
 
 This repository is the test-generation and quality-gate repo. The application under test runs separately.
