@@ -16,10 +16,14 @@ API generation:
 - Prefer ApiHelper from utils/api-helper.ts
 - Use Swagger-grounded payloads/assertions
 - Assert HTTP status and 1-2 stable fields only (success, valid, status, message)
+- Treat happy-path coverage as default for this assessment
+- Keep negative/edge-case API scenarios as optional additional coverage via a separate prompt/workflow
 - Avoid unstable assertions (IDs, timestamps, dynamic text)
 
 E2E generation:
 - Generate one stable checkout happy path
+- Treat happy-path web coverage as default for this assessment
+- Keep negative/edge-case web scenarios as optional additional coverage via a separate prompt/workflow
 - Prefer observable UI state over timeouts
 - Selector priority: input[name] > getByPlaceholder(...) > getByRole(...)
 

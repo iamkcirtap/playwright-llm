@@ -3,7 +3,6 @@
 This script is the main entry point for the generation flow. It:
 - loads the Swagger contract
 - checks that the required endpoints exist
-- adds known runtime notes when live behavior differs from Swagger
 - generates the required API and E2E specs with Gemini (API endpoints run in parallel)
 - normalizes a few known-safe generated-code patterns before validation
 - validates generated output with endpoint-specific rules
@@ -64,21 +63,6 @@ DETERMINISTIC_PAYLOADS = {
     "/api/validate-email": {
         "email": "buyer@example.com",
     },
-}
-RUNTIME_NOTES = {
-    "/api/checkout": (
-        "Runtime request body uses only cardNumber, expiry, cvv, and amount. "
-        "Do not send email to /api/checkout."
-    ),
-    "/api/validate-card": (
-        "Runtime behavior returns HTTP 200 for a valid card with a response message of "
-        "'Card number validated'."
-    ),
-    "/api/validate-email": (
-        "QA contract rule: generate a deterministic happy-path success test based on Swagger, "
-        "asserting HTTP 200 with stable fields 'valid' and 'message'. Any backend mismatch "
-        "should be surfaced during Playwright execution, not generation."
-    ),
 }
 
 
@@ -194,11 +178,7 @@ def generate_one_api_test(
 
 
 def generate_api_test(endpoint_spec: dict, payload: dict) -> str:
-    """Build the API prompt for one endpoint and ask Gemini for a spec file.
-
-    Runtime notes are included so generation can follow observed application
-    behavior when it differs from the Swagger contract.
-    """
+    """Build the API prompt for one endpoint and ask Gemini for a spec file."""
     base_prompt = load_prompt(BASE_PROMPT_NAME)
     api_prompt = load_prompt("api_test_generation")
 
@@ -209,7 +189,6 @@ def generate_api_test(endpoint_spec: dict, payload: dict) -> str:
             "ENDPOINT": endpoint_spec["endpoint"],
             "ENDPOINT_SPEC": json.dumps(endpoint_spec, indent=2),
             "PAYLOAD": json.dumps(payload, indent=2),
-            "RUNTIME_NOTES": RUNTIME_NOTES.get(endpoint_spec["endpoint"], "No additional runtime notes."),
         },
     )
     endpoint_cache_key = endpoint_spec["endpoint"].strip("/").replace("/", "_")

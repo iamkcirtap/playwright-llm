@@ -2,17 +2,9 @@
 
 This repository generates Playwright tests with Google Gemini, validates the generated code, and runs the saved specs in CI as a quality gate.
 
-## Known QA Policy
-
-- API test generation is happy-path only and contract-first (Swagger/OpenAPI).
-- Generated success expectations must not be rewritten to match known backend bugs.
-- If runtime behavior drifts from contract on a happy-path route, generation should still succeed and the failure should be surfaced during Playwright execution.
-- QA should treat these Playwright failures as backend contract regression signals.
-
 ## Table of Contents
 
 - [PayMongo SDET Assessment](#paymongo-sdet-assessment)
-  - [Known QA Policy](#known-qa-policy)
   - [Table of Contents](#table-of-contents)
   - [What This Project Does](#what-this-project-does)
   - [Overall Design](#overall-design)
@@ -47,6 +39,8 @@ This repository generates Playwright tests with Google Gemini, validates the gen
 
 - Generates API tests for `/api/checkout`, `/api/validate-card`, and `/api/validate-email`
 - Generates one happy-path E2E checkout test
+- Keeps happy-path coverage as the default for both API and web in this assessment
+- Supports optional negative/edge-case coverage through a separate prompt flow
 - Validates generated output before saving it
 - Repairs invalid output once, then skips it if still invalid
 - Reuses valid specs and simple cached LLM responses to reduce repeated Gemini calls
@@ -135,7 +129,7 @@ Prompts are split into focused roles. `core_context.txt` sets the global context
 
 ### 2. Swagger → Playwright Tests
 
-`swagger_loader.py` extracts the method, path, request schema, and response schemas for each required endpoint. `generate_tests.py` combines that contract with a fixed deterministic payload and QA-specific generation notes. For API happy-path tests, Swagger contract expectations remain authoritative; if backend runtime behavior drifts, the generated test should still reflect contract success and fail during Playwright execution. This keeps failures actionable as contract bugs instead of masking them during generation.
+`swagger_loader.py` extracts the method, path, request schema, and response schemas for each required endpoint. `generate_tests.py` combines that contract with fixed deterministic payloads. For API happy-path tests, Swagger contract expectations are authoritative; if backend runtime behavior drifts, generated tests keep contract assertions and fail during Playwright execution. This keeps failures actionable as contract bugs instead of masking them during generation.
 
 ### 3. Generation Process
 
@@ -314,7 +308,7 @@ To invalidate old LLM cache entries, bump:
 
 - `LLM_CACHE_VERSION=v1`
 
-In practice, bump `LLM_CACHE_VERSION` whenever prompt wording, validator logic, or runtime notes change. That keeps fresh generations isolated from older cached outputs.
+In practice, bump `LLM_CACHE_VERSION` whenever prompt wording or validator logic changes. That keeps fresh generations isolated from older cached outputs.
 
 ## Validation Rules
 
@@ -397,12 +391,7 @@ If your CI job does not start the application under test, use one of these appro
 - Output only runnable `.spec.ts` files
 - Do not invent endpoints, fields, or UI selectors
 - Use deterministic inputs and stable assertions
-- Prefer real contract data over model guesses
-
-Known runtime notes applied by the generator:
-
-- `/api/checkout` runtime requests use `cardNumber`, `expiry`, `cvv`, and `amount` only
-- `/api/validate-email` returns HTTP `500` with an error payload at runtime, so generation must prefer runtime behavior over the Swagger `200` schema
+- Prefer contract data over model guesses
 
 ## How This Compares To Broader AI Test Generators
 
@@ -427,7 +416,7 @@ So compared with broader examples, this project is less feature-rich as a framew
 
 Negative/edge-case prompt (not active in the current runtime flow):
 
-- [`prompts/optional/api_test_generation_negative.txt`](prompts/optional/api_test_generation_negative.txt)
+- [`prompts/api_test_generation_negative.txt`](prompts/api_test_generation_negative.txt)
 
 Other prompt files in [`prompts/`](prompts/) are currently kept as legacy or optional references. They are not loaded by the present runtime flow, so they do not add token cost unless the code is expanded to use them again.
 
@@ -442,4 +431,3 @@ Other prompt files in [`prompts/`](prompts/) are currently kept as legacy or opt
 Fresh-generation proof:
 
 - The repo has been verified with repeated from-scratch generations by deleting generated specs, bumping `LLM_CACHE_VERSION`, regenerating through prompts, and rerunning `npm run quality:gate` successfully.
-

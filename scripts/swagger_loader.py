@@ -4,9 +4,6 @@ This module supports:
 - loading Swagger from a URL or local file
 - updating a local fallback copy
 - extracting API routes and endpoint-specific contract details
-
-The generator may still apply runtime notes on top of this contract when the
-real application behavior is known to differ from Swagger.
 """
 
 import json

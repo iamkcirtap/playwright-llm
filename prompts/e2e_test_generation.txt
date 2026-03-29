@@ -6,6 +6,8 @@ Plan:
 Rules:
 - Frontend target is the checkout page on `http://localhost:3000`
 - The checkout flow should cover one stable happy path only
+- Treat happy-path web coverage as the default for this assessment
+- Keep negative/edge-case UI scenarios as optional additional coverage through a separate prompt/workflow
 - Use the sample values from the plan when they are provided
 - Fill: email, cardNumber, expiry, cvv, amount
 - Submit the form

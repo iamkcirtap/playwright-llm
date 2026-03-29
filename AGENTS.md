@@ -2,22 +2,24 @@
 
 ## Table of Contents
 
-- [Overview](#overview)
-- [Core Objective](#core-objective)
-- [Constraints](#constraints)
-- [Required Coverage](#required-coverage)
-- [Source Of Truth](#source-of-truth)
-- [Test Design Rules](#test-design-rules)
-  - [API Tests](#api-tests)
-  - [E2E Tests](#e2e-tests)
-- [Determinism Rules](#determinism-rules)
-- [Generation Flow](#generation-flow)
-- [Active Prompts](#active-prompts)
-- [Validation Rules](#validation-rules)
-- [Environment Assumption](#environment-assumption)
-- [Error Handling](#error-handling)
-- [Non-Goals](#non-goals)
-- [Summary](#summary)
+- [AGENTS.md](#agentsmd)
+  - [Table of Contents](#table-of-contents)
+  - [Overview](#overview)
+  - [Core Objective](#core-objective)
+  - [Constraints](#constraints)
+  - [Required Coverage](#required-coverage)
+  - [Source Of Truth](#source-of-truth)
+  - [Test Design Rules](#test-design-rules)
+    - [API Tests](#api-tests)
+    - [E2E Tests](#e2e-tests)
+  - [Determinism Rules](#determinism-rules)
+  - [Generation Flow](#generation-flow)
+  - [Active Prompts](#active-prompts)
+  - [Validation Rules](#validation-rules)
+  - [Environment Assumption](#environment-assumption)
+  - [Error Handling](#error-handling)
+  - [Non-Goals](#non-goals)
+  - [Summary](#summary)
 
 ## Overview
 
@@ -86,6 +88,7 @@ Additionally:
 - Keep each test self-contained
 - Generate happy-path success assertions from Swagger contract expectations
 - Do not rewrite generation-time expectations to match known backend contract bugs
+- Treat negative scenarios as optional additional coverage through a separate prompt/workflow
 
 ### E2E Tests
 
@@ -94,6 +97,8 @@ Must:
 - fill email, cardNumber, expiry, cvv, and amount
 - submit the checkout form
 - assert a visible success state
+- keep the primary E2E flow happy-path only for this assessment
+- treat negative UI scenarios as optional additional coverage through a separate prompt/workflow
 
 Selector priority:
 
