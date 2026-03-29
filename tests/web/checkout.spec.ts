@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-test('should successfully complete a checkout with valid details', async ({ page }) => {
+test('should successfully complete a checkout transaction', async ({ page }) => {
   await page.goto('http://localhost:3000');
 
   await page.locator('input[name="email"]').fill('buyer@example.com');

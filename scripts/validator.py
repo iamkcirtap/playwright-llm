@@ -27,8 +27,8 @@ API_ROUTE_EXPECTATIONS = {
         "field_names": ["valid", "message"],
     },
     "/api/validate-email": {
-        "expected_status": 500,
-        "field_names": ["error"],
+        "expected_status": 200,
+        "field_names": ["valid", "message"],
     },
 }
 # Markers used to confirm the generated checkout flow actually submits the form.
@@ -188,13 +188,6 @@ def find_missing_api_assertions(code: str, referenced_routes: set[str]) -> str |
                 f"API spec for {route} must assert at least one stable response field: "
                 f"{', '.join(route_expectations['field_names'])}."
             )
-
-        if route == "/api/validate-email" and "Internal server error" in code:
-            return (
-                "API spec for /api/validate-email should assert the error field exists, "
-                "but should not assume an exact error message string."
-            )
-
     return None
 
 

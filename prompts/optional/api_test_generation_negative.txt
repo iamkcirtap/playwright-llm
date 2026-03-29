@@ -1,0 +1,32 @@
+Generate a Playwright API negative/edge-case test.
+
+Endpoint:
+{{ENDPOINT}}
+
+Endpoint spec:
+{{ENDPOINT_SPEC}}
+
+Payload:
+{{PAYLOAD}}
+
+Negative case context:
+{{NEGATIVE_CASE}}
+
+Rules:
+- Use the provided endpoint exactly as given
+- Import `ApiHelper` as a named import from `../../utils/api-helper`
+- When using `ApiHelper`, construct it from Playwright's `request` fixture
+- Wrap the test in `test.describe('<endpoint> API negative', ...)`
+- Parse the JSON response into `const body = await response.json()`
+- Use relative API endpoints such as `/api/checkout`, never absolute URLs
+- For GET: use `apiHelper.get(endpoint)`
+- For POST: use `apiHelper.post(endpoint, payload)`
+- Generate exactly one deterministic negative/edge-case test for the endpoint
+- Assert an expected non-success HTTP status and 1-2 stable error fields
+- Prefer stable fields such as `error`, `message`, `status`, or `valid`
+- Do not invent request or response properties
+- Do not assert unstable text, IDs, or timestamps
+- Keep output self-contained, deterministic, and runnable
+- Return code only. No markdown fences. No explanation.
+
+Return full .spec.ts file only.

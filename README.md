@@ -2,9 +2,17 @@
 
 This repository generates Playwright tests with Google Gemini, validates the generated code, and runs the saved specs in CI as a quality gate.
 
+## Known QA Policy
+
+- API test generation is happy-path only and contract-first (Swagger/OpenAPI).
+- Generated success expectations must not be rewritten to match known backend bugs.
+- If runtime behavior drifts from contract on a happy-path route, generation should still succeed and the failure should be surfaced during Playwright execution.
+- QA should treat these Playwright failures as backend contract regression signals.
+
 ## Table of Contents
 
 - [PayMongo SDET Assessment](#paymongo-sdet-assessment)
+  - [Known QA Policy](#known-qa-policy)
   - [Table of Contents](#table-of-contents)
   - [What This Project Does](#what-this-project-does)
   - [Overall Design](#overall-design)
@@ -50,7 +58,7 @@ The design is intentionally simple:
 1. Load Swagger from a URL or local file
 2. Check that the required endpoints exist
 3. Use fixed payloads for the required API endpoints
-4. Add known runtime notes when real behavior differs from Swagger
+4. Keep API generation contract-first for happy-path scenarios
 5. Ask Gemini to generate one API spec per endpoint and one E2E spec
 6. Validate the generated code
 7. Repair once if needed
@@ -123,11 +131,11 @@ flowchart TD
 
 ### 1. LLM Prompt Design
 
-Prompts are split into focused roles. `core_context.txt` sets the global context: TypeScript, Playwright, no placeholders, no TODOs. `api_test_generation.txt` handles API test generation with the Swagger contract and fixed payloads injected via `{{VARIABLE}}` substitution. `e2e_test_generation.txt` handles the checkout flow with explicit selector priority rules. `repair_generation.txt` routes a focused validation message back to Gemini for one fix attempt. Keeping prompts short and single-purpose reduces unpredictable output.
+Prompts are split into focused roles. `core_context.txt` sets the global context: TypeScript, Playwright, no placeholders, no TODOs. `api_test_generation.txt` handles API test generation with the Swagger contract and fixed payloads injected via `{{VARIABLE}}` substitution. `e2e_test_generation.txt` handles the checkout flow with explicit selector priority rules. `repair_generation.txt` routes a focused validation message back to Gemini for one fix attempt. `api_test_generation_negative.txt` is a separate prompt reserved for negative/edge-case API tests and is intentionally outside the active happy-path runtime flow. Keeping prompts short and single-purpose reduces unpredictable output.
 
 ### 2. Swagger → Playwright Tests
 
-`swagger_loader.py` extracts the method, path, request schema, and response schemas for each required endpoint. `generate_tests.py` combines that contract with a fixed deterministic payload and any known runtime notes (for cases where actual behavior differs from Swagger). Both are embedded directly in the prompt so Gemini generates assertions against real fields and real status codes — not invented ones.
+`swagger_loader.py` extracts the method, path, request schema, and response schemas for each required endpoint. `generate_tests.py` combines that contract with a fixed deterministic payload and QA-specific generation notes. For API happy-path tests, Swagger contract expectations remain authoritative; if backend runtime behavior drifts, the generated test should still reflect contract success and fail during Playwright execution. This keeps failures actionable as contract bugs instead of masking them during generation.
 
 ### 3. Generation Process
 
@@ -173,7 +181,7 @@ The prompt enforces a strict selector priority:
 ## Short Script Explanations
 
 - [`scripts/generate_tests.py`](scripts/generate_tests.py)
-   Main orchestration script. It loads Swagger, loops through the required endpoints, adds runtime notes for known Swagger mismatches, calls Gemini with focused prompts, validates the output, and saves runnable specs.
+   Main orchestration script. It loads Swagger, loops through the required endpoints, applies contract-first QA generation notes, calls Gemini with focused prompts, validates the output, and saves runnable specs.
 - [`scripts/swagger_loader.py`](scripts/swagger_loader.py)
   Loads Swagger from a live URL or file path, updates a local fallback copy, and extracts endpoint-specific contract data.
 - [`scripts/prompt_loader.py`](scripts/prompt_loader.py)
@@ -416,6 +424,10 @@ So compared with broader examples, this project is less feature-rich as a framew
 - [`prompts/api_test_generation.txt`](prompts/api_test_generation.txt)
 - [`prompts/e2e_test_generation.txt`](prompts/e2e_test_generation.txt)
 - [`prompts/repair_generation.txt`](prompts/repair_generation.txt)
+
+Negative/edge-case prompt (not active in the current runtime flow):
+
+- [`prompts/optional/api_test_generation_negative.txt`](prompts/optional/api_test_generation_negative.txt)
 
 Other prompt files in [`prompts/`](prompts/) are currently kept as legacy or optional references. They are not loaded by the present runtime flow, so they do not add token cost unless the code is expanded to use them again.
 

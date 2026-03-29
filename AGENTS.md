@@ -71,7 +71,8 @@ Additionally:
 ## Source Of Truth
 
 - Swagger/OpenAPI is the contract guide
-- Actual runtime behavior takes priority if Swagger and runtime differ
+- For API happy-path specs, keep assertions contract-first (Swagger)
+- If runtime differs from Swagger for a happy-path route, let the mismatch fail during Playwright execution (QA bug signal)
 
 ---
 
@@ -83,7 +84,8 @@ Additionally:
 - Assert HTTP status
 - Assert at least one meaningful response field
 - Keep each test self-contained
-- Prefer actual runtime behavior when it differs from Swagger
+- Generate happy-path success assertions from Swagger contract expectations
+- Do not rewrite generation-time expectations to match known backend contract bugs
 
 ### E2E Tests
 
@@ -141,6 +143,8 @@ The current runtime flow uses only these prompt files:
 - `prompts/api_test_generation.txt`
 - `prompts/e2e_test_generation.txt`
 - `prompts/repair_generation.txt`
+
+`prompts/api_test_generation_negative.txt` is reserved for negative/edge-case generation and is intentionally not loaded by the current happy-path runtime flow.
 
 Other prompt files may remain in the repository as legacy or optional references, but they are not loaded by the current generation flow.
 

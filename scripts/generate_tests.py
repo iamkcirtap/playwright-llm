@@ -75,8 +75,9 @@ RUNTIME_NOTES = {
         "'Card number validated'."
     ),
     "/api/validate-email": (
-        "Runtime behavior returns HTTP 500 with an error payload when email validation is called. "
-        "Prefer real runtime behavior over Swagger's documented 200 response."
+        "QA contract rule: generate a deterministic happy-path success test based on Swagger, "
+        "asserting HTTP 200 with stable fields 'valid' and 'message'. Any backend mismatch "
+        "should be surfaced during Playwright execution, not generation."
     ),
 }
 
