@@ -1,10 +1,10 @@
-# PayMongo SDET Assessment
+# Playwright-LLM
 
 This repository generates Playwright tests with Google Gemini, validates the generated code, and runs the saved specs in CI as a quality gate.
 
 ## Table of Contents
 
-- [PayMongo SDET Assessment](#paymongo-sdet-assessment)
+- [Playwright-LLM](#playwright-llm)
   - [Table of Contents](#table-of-contents)
   - [What This Project Does](#what-this-project-does)
   - [Overall Design](#overall-design)
@@ -252,7 +252,7 @@ The included [Dockerfile](Dockerfile) packages the full pipeline — Python, Nod
 Build the image:
 
 ```bash
-docker build -t paymongo-tests .
+docker build -t playwright-llm-tests .
 ```
 
 Run the quality gate, passing your Gemini key and app URLs at run time:
@@ -262,7 +262,7 @@ docker run --rm \
   -e GEMINI_API_KEY=your-key \
   -e STAGING_BASE_URL=http://host.docker.internal:3000 \
   -e STAGING_API_URL=http://host.docker.internal:8080 \
-  paymongo-tests
+  playwright-llm-tests
 ```
 
 Use `host.docker.internal` to reach services running on your local machine from inside the container (macOS and Windows). On Linux, use `--network host` and `localhost` as usual.
@@ -276,7 +276,7 @@ docker run --rm \
   -e STAGING_API_URL=http://host.docker.internal:8080 \
   -v "$(pwd)/playwright-report:/app/playwright-report" \
   -v "$(pwd)/test-results:/app/test-results" \
-  paymongo-tests
+  playwright-llm-tests
 ```
 
 ## CI / CD Use
