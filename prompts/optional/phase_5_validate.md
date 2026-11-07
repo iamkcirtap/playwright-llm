@@ -1,13 +1,17 @@
+# Phase 5 validate
+
+> Optional reference: not loaded by the active happy-path generation flow.
+
 Validate this Playwright test file.
 
-Check:
+## Check
+
 - contains test() and expect()
 - contains import or require
 - no TODO, FIXME, or placeholders
 - valid syntax
 - selectors look valid
 
-Return:
-VALID
-or
-INVALID: <reason>
+## Output
+
+Return exactly `VALID` or `INVALID: <reason>`.

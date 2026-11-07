@@ -3,27 +3,27 @@
 ## Table of Contents
 
 - [AGENTS.md](#agentsmd)
-  - [Table of Contents](#table-of-contents)
-  - [Overview](#overview)
-  - [Core Objective](#core-objective)
-  - [Constraints](#constraints)
-  - [Required Coverage](#required-coverage)
-  - [Source Of Truth](#source-of-truth)
-  - [Test Design Rules](#test-design-rules)
-    - [API Tests](#api-tests)
-    - [E2E Tests](#e2e-tests)
-  - [Determinism Rules](#determinism-rules)
-  - [Generation Flow](#generation-flow)
-  - [Active Prompts](#active-prompts)
-  - [Validation Rules](#validation-rules)
-  - [Environment Assumption](#environment-assumption)
-  - [Error Handling](#error-handling)
-  - [Non-Goals](#non-goals)
-  - [Summary](#summary)
+    - [Table of Contents](#table-of-contents)
+    - [Overview](#overview)
+    - [Core Objective](#core-objective)
+    - [Constraints](#constraints)
+    - [Required Coverage](#required-coverage)
+    - [Source Of Truth](#source-of-truth)
+    - [Test Design Rules](#test-design-rules)
+        - [API Tests](#api-tests)
+        - [E2E Tests](#e2e-tests)
+    - [Determinism Rules](#determinism-rules)
+    - [Generation Flow](#generation-flow)
+    - [Active Prompts](#active-prompts)
+    - [Validation Rules](#validation-rules)
+    - [Environment Assumption](#environment-assumption)
+    - [Error Handling](#error-handling)
+    - [Non-Goals](#non-goals)
+    - [Summary](#summary)
 
 ## Overview
 
-This repository implements an AI-driven Playwright test generation pipeline using Google Gemini.
+This repository implements an AI-driven Playwright test generation pipeline using a selected LLM provider: Gemini (default), OpenAI, or Anthropic.
 
 The system generates:
 
@@ -38,7 +38,7 @@ Generated tests are then executed in CI as a quality gate.
 
 Build a reproducible, low-maintenance automation flow where:
 
-- tests are generated programmatically with Gemini
+- tests are generated programmatically with the selected provider
 - tests validate real application behavior
 - tests run in CI and fail on regression
 - manual maintenance stays minimal
@@ -128,12 +128,12 @@ Avoid:
 1. Load Swagger and prompts
 2. Confirm required endpoints exist
 3. For each required API endpoint:
-   - use a fixed deterministic payload
-   - generate the API test with Gemini
-   - validate the generated code
-   - repair once if invalid
-   - save only valid output
-4. Generate one checkout E2E test with Gemini
+    - use a fixed deterministic payload
+    - generate the API test with the selected provider
+    - validate the generated code
+    - repair once if invalid
+    - save only valid output
+4. Generate one checkout E2E test with the selected provider
 5. Validate and repair once if needed
 6. Save only valid output
 7. Reuse existing valid specs and simple cached LLM responses when available
@@ -144,12 +144,12 @@ Avoid:
 
 The current runtime flow uses only these prompt files:
 
-- `prompts/core_context.txt`
-- `prompts/api_test_generation.txt`
-- `prompts/e2e_test_generation.txt`
-- `prompts/repair_generation.txt`
+- `prompts/core_context.md`
+- `prompts/api_test_generation.md`
+- `prompts/e2e_test_generation.md`
+- `prompts/repair_generation.md`
 
-`prompts/api_test_generation_negative.txt` is reserved for negative/edge-case generation and is intentionally not loaded by the current happy-path runtime flow.
+`prompts/optional/api_test_generation_negative.md` is reserved for negative/edge-case generation and is intentionally not loaded by the current happy-path runtime flow.
 
 Other prompt files may remain in the repository as legacy or optional references, but they are not loaded by the current generation flow.
 
@@ -157,11 +157,14 @@ Other prompt files may remain in the repository as legacy or optional references
 
 ## Validation Rules
 
+Generated test output must remain runnable `.spec.ts` files. Repository-local Python regression checks for the generator live in `scripts/test_*.py` and run with `npm run test:unit`; they use mocked LLM calls and are separate from generated application tests.
+
 A generated test is valid if it:
 
 - contains `test()`
 - contains `expect()`
 - contains imports
+- does not skip or focus tests or intercept responses to manufacture success
 - has no placeholders or TODOs
 - references only allowed API routes for API specs
 - asserts the expected HTTP status for each required API route
@@ -171,7 +174,7 @@ A generated test is valid if it:
 
 If invalid:
 
-- attempt one repair using Gemini
+- attempt one repair using the selected provider
 - if still invalid: in CI (`STRICT_GENERATION=true`) fail immediately; locally skip and continue
 
 ---
@@ -183,7 +186,13 @@ The pipeline assumes the target application is already running and reachable.
 Environment variables:
 
 - `GEMINI_API_KEY` -> Gemini access
-- `LLM_MODEL` -> comma-separated Gemini model fallback order
+- `LLM_PROVIDER` -> gemini (default), openai, or anthropic
+- `OPENAI_API_KEY` -> OpenAI access when selected
+- `ANTHROPIC_API_KEY` -> Anthropic access when selected
+- `LLM_MODEL` -> comma-separated model fallback order within the selected provider; required for OpenAI/Anthropic
+- `LLM_MAX_OUTPUT_TOKENS` -> generated output token budget
+- `LLM_MAX_RETRIES` -> maximum attempts per model
+- `LLM_REQUEST_TIMEOUT` -> request timeout in seconds
 - `SWAGGER_PATH` -> optional Swagger path or URL
 - `FORCE_REGENERATE` -> regenerate specs even when valid ones already exist
 - `STRICT_GENERATION` -> fail immediately when required specs cannot be regenerated
@@ -197,7 +206,7 @@ Environment variables:
 
 - Validation failures trigger one repair attempt
 - Invalid outputs are skipped
-- Temporary Gemini failures such as rate limits are retried with backoff
+- Temporary selected-provider failures such as rate limits are retried with backoff
 - Cached responses may be reused to reduce repeated API calls
 
 ---
@@ -207,7 +216,7 @@ Environment variables:
 - No framework redesign
 - No Playwright config changes
 - No complex validation engine
-- No multi-LLM orchestration
+- No automatic cross-provider orchestration; explicit provider selection is supported
 - No complex caching layer
 
 ---
@@ -220,4 +229,4 @@ This system demonstrates:
 - contract-aware automation
 - deterministic test generation inputs
 - CI-integrated quality gating
-- simple rate-limit-aware caching
+- simple provider/model/prompt-aware caching with rate-limit retries

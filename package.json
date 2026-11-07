@@ -4,6 +4,7 @@
     "description": "Production-ready Playwright automation template for Web and API Testing with TypeScript",
     "main": "index.js",
     "scripts": {
+        "test:unit": "python -m unittest discover -s scripts -p \"test_*.py\"",
         "generate": "python scripts/generate_tests.py",
         "generate:local": "cross-env FORCE_REGENERATE=false LLM_CACHE_ENABLED=true python scripts/generate_tests.py",
         "generate:ci": "cross-env CI=true FORCE_REGENERATE=true STRICT_GENERATION=true LLM_CACHE_ENABLED=false python scripts/generate_tests.py",

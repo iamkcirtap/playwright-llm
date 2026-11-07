@@ -1,60 +1,70 @@
 name: AI Test Pipeline
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+    push:
+        branches: [master]
+    pull_request:
+        branches: [master]
 
 jobs:
     test:
         runs-on: ubuntu-latest
 
         env:
+            LLM_PROVIDER: ${{ vars.LLM_PROVIDER || 'gemini' }}
+            OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+            ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
             GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
             SWAGGER_PATH: ${{ vars.SWAGGER_PATH }}
             STAGING_BASE_URL: ${{ vars.STAGING_BASE_URL }}
             STAGING_API_URL: ${{ vars.STAGING_API_URL }}
-            LLM_MODEL: gemini-2.5-flash,gemini-flash-latest,gemini-flash-lite-latest
+            LLM_MODEL: ${{ vars.LLM_MODEL }}
             CI: true
             FORCE_REGENERATE: true
             LLM_CACHE_ENABLED: false
-            LLM_CACHE_VERSION: v1
+            LLM_CACHE_VERSION: v4
 
         steps:
-        - name: Checkout repository
-          uses: actions/checkout@v4
+            - name: Checkout repository
+              uses: actions/checkout@v4
 
-        - name: Set up Python
-          uses: actions/setup-python@v5
-          with:
-            python-version: '3.11'
+            - name: Set up Python
+              uses: actions/setup-python@v5
+              with:
+                  python-version: '3.11'
 
-        - name: Install dependencies
-          run: |
-                python -m pip install --upgrade pip
-                pip install -r requirements.txt
+            - name: Install dependencies
+              run: |
+                  python -m pip install --upgrade pip
+                  pip install -r requirements.txt
 
-        - name: Setup Node.js
-          uses: actions/setup-node@v4
-          with:
-            node-version: '20'
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: '20'
 
-        - name: Install Node.js dependencies
-          run: npm install
+            - name: Install Node.js dependencies
+              run: npm install
 
-        - name: Install Playwright Browsers
-          run: npx playwright install --with-deps
+            - name: Run offline regression and static checks
+              run: |
+                  npm run test:unit
+                  npm run lint
+                  npm run format:check
+                  npx tsc --noEmit
 
-        - name: Run CI quality gate
-          run: npm run quality:gate:ci
+            - name: Install Playwright Browsers
+              run: npx playwright install --with-deps
 
-        - name: Upload Playwright artifacts
-          if: always()
-          uses: actions/upload-artifact@v4
-          with:
-            name: playwright-artifacts
-            path: |
-              playwright-report
-              test-results
-            if-no-files-found: warn
+            - name: Run CI quality gate
+              run: npm run quality:gate:ci
+
+            - name: Upload Playwright artifacts
+              if: always()
+              uses: actions/upload-artifact@v4
+              with:
+                  name: playwright-artifacts
+                  path: |
+                      playwright-report
+                      test-results
+                  if-no-files-found: warn

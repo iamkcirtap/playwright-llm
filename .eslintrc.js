@@ -8,7 +8,7 @@ module.exports = {
     plugins: ['@typescript-eslint', 'playwright'],
     extends: [
         'eslint:recommended',
-        '@typescript-eslint/recommended',
+        'plugin:@typescript-eslint/recommended',
         'plugin:playwright/recommended',
         'prettier',
     ],
@@ -32,6 +32,10 @@ module.exports = {
         es6: true,
     },
     overrides: [
+        {
+            files: ['*.js'],
+            parserOptions: { project: null },
+        },
         {
             files: ['*.spec.ts', '*.test.ts'],
             rules: {
