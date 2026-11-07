@@ -6,9 +6,10 @@ is saved:
 - allowed API route checks
 - route-specific API status and field assertion checks
 - required checkout-flow structure, submit, and success-state checks
-- one repair attempt using Gemini when validation fails
+- one repair attempt using the selected provider when validation fails
 """
 
+import json
 import re
 from llm_client import call_llm
 from prompt_loader import build_prompt, load_prompt
@@ -17,42 +18,7 @@ BASE_PROMPT_NAME = "core_context"
 REQUIRED_E2E_FIELDS = ["email", "cardNumber", "expiry", "cvv", "amount"]
 PLACEHOLDER_MARKERS = ["TODO", "FIXME"]
 MAX_API_TEST_BLOCKS = 1
-API_ROUTE_EXPECTATIONS = {
-    "/api/checkout": {
-        "expected_status": 200,
-        "field_names": ["status", "message"],
-    },
-    "/api/validate-card": {
-        "expected_status": 200,
-        "field_names": ["valid", "message"],
-    },
-    "/api/validate-email": {
-        "expected_status": 200,
-        "field_names": ["valid", "message"],
-    },
-}
-# Markers used to confirm the generated checkout flow actually submits the form.
-SUBMIT_SELECTOR_MARKERS = [
-    'button[type="submit"]',
-    "button[type='submit']",
-]
-SUBMIT_ACTION_MARKERS = [
-    "click()",
-    "press('Enter')",
-    'press("Enter")',
-]
-# Markers that indicate the E2E test verifies a visible success outcome.
-SUCCESS_STATE_MARKERS = [
-    "Payment processed successfully!",
-    "toContain('✅')",
-    'toContain("✅")',
-    "toContainText('✅')",
-    'toContainText("✅")',
-    "toContain('Payment processed successfully!')",
-    'toContain("Payment processed successfully!")',
-    "toContainText('Payment processed successfully!')",
-    'toContainText("Payment processed successfully!")',
-]
+JS_TOKENS = r"(['\"`])(?:\\.|(?!\1)[\s\S])*?\1|//[^\n]*|/\*[\s\S]*?\*/"
 
 
 def contains_any(text: str, markers: list[str]) -> bool:
@@ -65,44 +31,65 @@ def has_module_import(code: str) -> bool:
     return "import" in code or "require" in code
 
 
-def has_status_assertion(code: str, expected_status: int) -> bool:
-    """Return True when the code appears to assert the expected HTTP status."""
-    expected_status_text = str(expected_status)
-    status_markers = [
-        f"status()).toBe({expected_status_text}",
-        f"status() === {expected_status_text}",
-        f"validateAndGetJson(response, {expected_status_text})",
-        f"toBe({expected_status_text})",
-        f"toEqual({expected_status_text})",
-    ]
-    if contains_any(code, status_markers):
-        return True
-
-    return "status()" in code and expected_status_text in code
+def without_comments(code: str) -> str:
+    """Discard comments while preserving quoted strings used by selectors."""
+    return re.sub(JS_TOKENS, lambda match: "" if match[0].startswith(("//", "/*"))
+                  else match[0], code)
 
 
-def has_field_assertion(code: str, field_names: list[str]) -> bool:
-    """Return True when at least one expected response field is asserted."""
-    field_markers: list[str] = []
-    for field_name in field_names:
-        field_markers.extend(
-            [
-                f".{field_name}",
-                f"['{field_name}']",
-                f'["{field_name}"]',
-                f"'{field_name}'",
-                f'"{field_name}"',
-            ]
-        )
+def find_execution_bypass(code: str) -> str | None:
+    """Reject common skip/focus and response-interception calls, not prose."""
+    executable = re.sub(JS_TOKENS, lambda match: " " * len(match[0]), code)
+    forbidden = r"skip|fixme|only|route|routeFromHAR|routeWebSocket|fulfill"
+    if re.search(rf"\.\s*(?:{forbidden})\b", executable):
+        return "Specs must execute normally against the real application; skip/focus and response interception are forbidden."
+    for token in re.finditer(JS_TOKENS, code):
+        if token[0].startswith("`") and "${" in token[0]:
+            return "Use fixed literal strings without template interpolation."
+        if token[0][1:-1] in forbidden.split("|") and code[:token.start()].rstrip().endswith("["):
+            return "Skip/focus and response interception members are forbidden, including bracket access."
+    # Bracket member calls are not needed by the supported generation format.
+    # Preserve field access such as body['status'], but reject computed calls.
+    if re.search(r"\]\s*\(", executable):
+        return "Use direct method calls; computed calls can bypass execution checks."
+    return None
 
-    return "expect(" in code and contains_any(code, field_markers)
+
+def has_status_assertion(code: str, expected_status: int, response: str) -> bool:
+    """Require an assertion on the response from the target request."""
+    return re.search(
+        rf"expect\(\s*{re.escape(response)}\.status\(\)\s*\)"
+        rf"\s*\.(?:toBe|toEqual)\(\s*{expected_status}\s*\)", code
+    ) is not None
+
+
+def has_field_assertion(code: str, field_schemas: dict, body: str) -> bool:
+    """Require a matcher on a contract field of the parsed response body."""
+    for field, schema in field_schemas.items():
+        access = rf"{re.escape(body)}(?:\.{re.escape(field)}|\[['\"]{re.escape(field)}['\"]\])"
+        # A single enum/const is an explicit contract value, unlike an example.
+        values = schema.get("enum", [])
+        fixed = [schema["const"]] if "const" in schema else values if len(values) == 1 else []
+        if fixed:
+            literal = json.dumps(fixed[0])
+            expected = (rf"['\"]{re.escape(fixed[0])}['\"]" if isinstance(fixed[0], str)
+                        else re.escape(literal))
+            pattern = rf"expect\(\s*{access}\s*\)\s*\.(?:toBe|toEqual)\(\s*{expected}\s*\)"
+        else:
+            pattern = (rf"expect\(\s*(?:typeof\s+)?{access}\s*\)\s*"
+                       r"\.(?:toBe|toEqual|toBeTruthy|toBeDefined|toMatch|toContain)\(")
+        if re.search(pattern, code):
+            return True
+    return False
 
 
 def has_valid_api_helper_import(code: str) -> bool:
     """Return True when ApiHelper is imported using the actual named export."""
     if "ApiHelper" not in code:
         return True
-    return "import { ApiHelper } from '../../utils/api-helper';" in code
+    return re.search(
+        r"import\s*\{\s*ApiHelper\s*\}\s*from\s*['\"]../../utils/api-helper['\"]", code
+    ) is not None
 
 
 def count_test_blocks(code: str) -> int:
@@ -122,23 +109,22 @@ def extract_api_routes(code: str) -> set[str]:
 
 
 def references_required_field(code: str, field_name: str) -> bool:
-    """Check if a field is used through common Playwright selector styles."""
-    selector_markers = [
-        f'input[name="{field_name}"]',
-        f"input[name='{field_name}']",
-        f"getByPlaceholder('{field_name}')",
-        f'getByPlaceholder("{field_name}")',
-    ]
-    if contains_any(code, selector_markers):
-        return True
-    # Fallback for other selector styles where the field token is still present.
-    return re.search(rf"\\b{re.escape(field_name)}\\b", code) is not None
+    """Require an awaited fill on the actual field selector."""
+    selector = rf"input\[name=['\"]{re.escape(field_name)}['\"]\]"
+    return re.search(
+        rf"await\s+page\.locator\(\s*(['\"]){selector}\1\s*\)"
+        r"\s*\.fill\(\s*['\"][^'\"]+['\"]\s*\)", code
+    ) is not None
 
 
 def find_missing_basics(code: str) -> str | None:
     """Return an error when core runnable test structure is missing."""
     if contains_any(code, PLACEHOLDER_MARKERS):
         return "Generated output still contains a placeholder such as TODO or FIXME."
+
+    bypass_error = find_execution_bypass(code)
+    if bypass_error:
+        return bypass_error
 
     if "test(" not in code:
         return "Generated output must include at least one Playwright test() call."
@@ -164,57 +150,73 @@ def find_invalid_api_routes(code: str, allowed_api_endpoints: set[str]) -> str |
     return None
 
 
-def find_missing_api_assertions(code: str, referenced_routes: set[str]) -> str | None:
-    """Return an error when an API test misses required status or field assertions."""
+def find_missing_api_assertions(code: str, expectations: dict) -> str | None:
+    """Tie the target request, status assertion, and body assertion together."""
     if count_test_blocks(code) != MAX_API_TEST_BLOCKS:
         return "API spec must contain exactly one deterministic happy-path test."
-
     if not has_valid_api_helper_import(code):
         return "API spec must import ApiHelper as a named import from ../../utils/api-helper."
-
-    for route in sorted(referenced_routes):
-        route_expectations = API_ROUTE_EXPECTATIONS.get(route)
-        if route_expectations is None:
-            continue
-
-        if not has_status_assertion(code, route_expectations["expected_status"]):
-            return (
-                f"API spec for {route} must assert HTTP status "
-                f"{route_expectations['expected_status']}."
-            )
-
-        if not has_field_assertion(code, route_expectations["field_names"]):
-            return (
-                f"API spec for {route} must assert at least one stable response field: "
-                f"{', '.join(route_expectations['field_names'])}."
-            )
+    endpoint = expectations["endpoint"]
+    if extract_api_routes(code) != {endpoint}:
+        return f"API spec must exercise only the target endpoint {endpoint}."
+    route = rf"['\"]{re.escape(endpoint)}['\"]"
+    aliases = re.findall(rf"const\s+(\w+)\s*=\s*{route}\s*;", code)
+    argument = "(?:" + "|".join([route, *(re.escape(alias) for alias in aliases)]) + ")"
+    request = re.search(
+        rf"const\s+(\w+)\s*=\s*await\s+(request|\w+)\."
+        rf"{expectations['method']}\(\s*{argument}\s*[,)]", code
+    )
+    if not request:
+        return f"API spec must await a {expectations['method'].upper()} request to {endpoint}."
+    response, receiver = request.groups()
+    if receiver != "request" and not re.search(
+        rf"const\s+{re.escape(receiver)}\s*=\s*new\s+ApiHelper\(\s*request\s*\)", code
+    ):
+        return "API request helper must be constructed from the request fixture."
+    status = expectations["expected_status"]
+    helper_json = re.search(
+        rf"const\s+(\w+)\s*=\s*await\s+{re.escape(receiver)}"
+        rf"\.validateAndGetJson\(\s*{re.escape(response)}\s*,\s*{status}\s*\)", code
+    ) if receiver != "request" else None
+    if not has_status_assertion(code, status, response) and not helper_json:
+        return f"API spec for {endpoint} must assert response.status() equals {status}."
+    parsed = re.search(
+        rf"const\s+(\w+)\s*=\s*await\s+{re.escape(response)}\.json\(\)", code
+    ) or helper_json
+    if not parsed or not has_field_assertion(code, expectations["field_schemas"], parsed[1]):
+        return f"API spec must assert a parsed response field from {expectations['field_names']}."
     return None
 
 
 def validate_e2e_test_structure(code: str) -> bool:
-    """Check for required checkout field usage, submit action, and success state."""
-    if "page.goto(" not in code:
+    """Check direct awaited checkout actions and a visible success assertion."""
+    if count_test_blocks(code) != 1:
         return False
-
-    if not contains_any(code, SUBMIT_SELECTOR_MARKERS):
+    navigation = re.search(r"await\s+page\.goto\(\s*['\"]/['\"]\s*\)", code)
+    if not navigation:
         return False
-
-    if not contains_any(code, SUBMIT_ACTION_MARKERS):
+    submit = re.search(
+        r"await\s+page\.locator\(\s*(['\"])button\[type=['\"]submit['\"]\]\1\s*\)\s*\.click\(\)", code
+    )
+    if not submit or submit.start() < navigation.end():
         return False
-
-    if not contains_any(code, SUCCESS_STATE_MARKERS):
+    form_actions = code[navigation.end():submit.start()]
+    if not all(references_required_field(form_actions, field) for field in REQUIRED_E2E_FIELDS):
         return False
-
-    return all(references_required_field(code, field) for field in REQUIRED_E2E_FIELDS)
+    return re.search(
+        r"await\s+expect\(\s*page\.getByText\(\s*(['\"])✅ Payment processed successfully!\1\s*\)"
+        r"\s*\)\s*\.toBeVisible\(\)", code[submit.end():]
+    ) is not None
 
 
 def find_validation_error(
     code: str,
     allowed_api_endpoints: set[str] | None = None,
     require_e2e_structure: bool = False,
+    api_expectations: dict | None = None,
 ) -> str | None:
     """Return a human-readable validation error, or None when valid."""
-    code = clean_code(code)
+    code = without_comments(clean_code(code))
     if not code:
         return "Generated output was empty."
 
@@ -227,16 +229,19 @@ def find_validation_error(
         if route_error:
             return route_error
 
-        referenced_routes = extract_api_routes(code)
-        assertion_error = find_missing_api_assertions(code, referenced_routes)
+    if allowed_api_endpoints is not None and api_expectations is None:
+        return "API validation requires expectations from the target Swagger operation."
+
+    if api_expectations is not None:
+        assertion_error = find_missing_api_assertions(code, api_expectations)
         if assertion_error:
             return assertion_error
 
     if require_e2e_structure and not validate_e2e_test_structure(code):
         return (
-            "E2E spec must include page.goto(), fill input[name=\"email\"], "
+            "E2E spec must await page.goto('/'), fill input[name=\"email\"], "
             "input[name=\"cardNumber\"], input[name=\"expiry\"], input[name=\"cvv\"], "
-            "input[name=\"amount\"], submit via button[type=\"submit\"], and assert a visible success state."
+            "input[name=\"amount\"], submit via button[type=\"submit\"], and await expect(page.getByText('✅ Payment processed successfully!')).toBeVisible()."
         )
 
     return None
@@ -246,6 +251,7 @@ def validate_test_cases(
     code: str,
     allowed_api_endpoints: set[str] | None = None,
     require_e2e_structure: bool = False,
+    api_expectations: dict | None = None,
 ) -> bool:
     """Return True when generated test code passes the lightweight checks."""
     return (
@@ -253,13 +259,14 @@ def validate_test_cases(
             code,
             allowed_api_endpoints=allowed_api_endpoints,
             require_e2e_structure=require_e2e_structure,
+            api_expectations=api_expectations,
         )
         is None
     )
 
 
-def repair_test_cases(code: str, error: str = "") -> str:
-    """Ask Gemini to repair invalid generated code using a focused error message."""
+def repair_test_cases(code: str, error: str = "", generation_context: str = "") -> str:
+    """Ask the selected provider to repair invalid generated code using a focused error message."""
     base_prompt = load_prompt(BASE_PROMPT_NAME)
     repair_prompt = load_prompt("repair_generation")
     full_prompt = build_prompt(
@@ -268,6 +275,7 @@ def repair_test_cases(code: str, error: str = "") -> str:
         {
             "ERROR": error,
             "TEST_CODE": code,
+            "GENERATION_CONTEXT": generation_context,
         },
     )
 
@@ -279,6 +287,8 @@ def validate_and_repair_test_cases(
     code: str,
     allowed_api_endpoints: set[str] | None = None,
     require_e2e_structure: bool = False,
+    api_expectations: dict | None = None,
+    generation_context: str = "",
 ) -> str | None:
     """Validate generated code and attempt one repair if validation fails.
 
@@ -291,6 +301,7 @@ def validate_and_repair_test_cases(
         code,
         allowed_api_endpoints=allowed_api_endpoints,
         require_e2e_structure=require_e2e_structure,
+        api_expectations=api_expectations,
     ):
         return code
     print("The generated test code is not valid and cannot be executed. Attempting to repair the code...")  
@@ -299,13 +310,18 @@ def validate_and_repair_test_cases(
         code,
         allowed_api_endpoints=allowed_api_endpoints,
         require_e2e_structure=require_e2e_structure,
+        api_expectations=api_expectations,
     ) or ""
-    fixed_code = repair_test_cases(code, validation_error)
+    repair_context = validation_error
+    if api_expectations is not None:
+        repair_context += "\nTarget Swagger expectations: " + json.dumps(api_expectations)
+    fixed_code = repair_test_cases(code, repair_context, generation_context)
 
     if validate_test_cases(
         fixed_code,
         allowed_api_endpoints=allowed_api_endpoints,
         require_e2e_structure=require_e2e_structure,
+        api_expectations=api_expectations,
     ):
         print("Successfully repaired the test code.")
         return fixed_code

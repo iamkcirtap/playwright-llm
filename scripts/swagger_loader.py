@@ -106,3 +106,51 @@ def extract_endpoint_spec(swagger_spec: dict, endpoint: str) -> dict:
         "definitions": extract_schema_definitions(swagger_spec),
         "methods": supported_methods,
     }
+
+
+def extract_response_expectations(swagger_spec: dict, endpoint: str) -> dict:
+    """Read the required POST happy-path contract, resolving local schema refs."""
+    def resolve(value: dict, seen: tuple[str, ...] = ()) -> dict:
+        if "$ref" not in value:
+            return value
+        ref = value["$ref"]
+        if not ref.startswith("#/") or ref in seen:
+            raise ValueError(f"Unsupported or cyclic Swagger reference: {ref}")
+        target = swagger_spec
+        for token in ref[2:].split("/"):
+            target = target[token.replace("~1", "/").replace("~0", "~")]
+        return resolve(target, (*seen, ref))
+
+    def properties(schema: dict, ancestors: tuple[int, ...] = ()) -> dict:
+        schema = resolve(schema)
+        if id(schema) in ancestors:
+            raise ValueError(f"Cyclic response schema for POST {endpoint}.")
+        ancestors = (*ancestors, id(schema))
+        result = dict(schema.get("properties", {}))
+        for part in schema.get("allOf", []):
+            result.update(properties(part, ancestors))
+        return result
+
+    operation = swagger_spec.get("paths", {}).get(endpoint, {}).get("post")
+    if not isinstance(operation, dict):
+        raise ValueError(f"Swagger must define POST {endpoint}.")
+    responses = operation.get("responses", {})
+    statuses = sorted(str(status) for status in responses if str(status).isdigit()
+                      and 200 <= int(status) < 300)
+    if len(statuses) != 1:
+        raise ValueError(f"POST {endpoint} must define one unambiguous success response.")
+    status = statuses[0]
+    response = resolve(responses.get(status, responses.get(int(status))))
+    schema = response.get("schema")
+    if schema is None:
+        schema = response.get("content", {}).get("application/json", {}).get("schema")
+    if not isinstance(schema, dict):
+        raise ValueError(f"POST {endpoint} {status} must define a JSON response schema.")
+    fields = properties(schema)
+    stable_names = ("success", "valid", "status", "message", "error")
+    field_names = [name for name in stable_names if name in fields]
+    if not field_names:
+        raise ValueError(f"POST {endpoint} {status} has no supported stable response fields.")
+    return {"endpoint": endpoint, "method": "post", "expected_status": int(status),
+            "field_names": field_names, "response_schema": schema,
+            "field_schemas": {name: resolve(fields[name]) for name in field_names}}

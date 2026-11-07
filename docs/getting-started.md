@@ -133,13 +133,16 @@ npm run test:uat
 Tests run on **Chromium (Chrome) by default** for faster execution.
 
 **Default browser:**
+
 - Chromium (Chrome/Edge)
 
 **Additional browsers available** (uncomment in `playwright.config.ts` when needed):
+
 - Firefox
 - WebKit (Safari)
 
 **Enable cross-browser testing:**
+
 ```bash
 # Edit playwright.config.ts and uncomment desired browser projects
 # Then run tests to include all browsers
@@ -147,6 +150,7 @@ npm test
 ```
 
 **Run specific browser:**
+
 ```bash
 npx playwright test --project=chromium     # Default browser
 npx playwright test --project=firefox      # If enabled

@@ -1,39 +1,40 @@
 # Playwright-LLM
 
-This repository generates Playwright tests with Google Gemini, validates the generated code, and runs the saved specs in CI as a quality gate.
+This repository generates Playwright tests with Gemini (default), OpenAI, or Anthropic, validates the generated code, and runs the saved specs in CI as a quality gate.
 
 ## Table of Contents
 
 - [Playwright-LLM](#playwright-llm)
-  - [Table of Contents](#table-of-contents)
-  - [What This Project Does](#what-this-project-does)
-  - [Overall Design](#overall-design)
-  - [Reliability Layers](#reliability-layers)
-  - [Architecture Diagram](#architecture-diagram)
-  - [Mode Behavior Diagram](#mode-behavior-diagram)
-  - [Design Notes](#design-notes)
-    - [1. LLM Prompt Design](#1-llm-prompt-design)
-    - [2. Swagger → Playwright Tests](#2-swagger--playwright-tests)
-    - [3. Generation Process](#3-generation-process)
-    - [4. CI Quality Gate](#4-ci-quality-gate)
-    - [5. Scaling to More Endpoints](#5-scaling-to-more-endpoints)
-    - [6. Preventing Hallucinated or Incorrect Tests](#6-preventing-hallucinated-or-incorrect-tests)
-    - [7. Handling Flaky or Unstable Tests](#7-handling-flaky-or-unstable-tests)
-    - [8. E2E Selector Strategy and Stability](#8-e2e-selector-strategy-and-stability)
-    - [9. Preventing Flaky Frontend Tests](#9-preventing-flaky-frontend-tests)
-  - [Short Script Explanations](#short-script-explanations)
-  - [System Under Test](#system-under-test)
-  - [Local Use](#local-use)
-  - [Docker](#docker)
-  - [CI / CD Use](#ci--cd-use)
-  - [Validation Rules](#validation-rules)
-  - [Caching Strategy](#caching-strategy)
-  - [CI / Quality Gate](#ci--quality-gate)
-    - [GitHub Actions Setup](#github-actions-setup)
-  - [Repository Rules](#repository-rules)
-  - [How This Compares To Broader AI Test Generators](#how-this-compares-to-broader-ai-test-generators)
-  - [Prompt Files In Use](#prompt-files-in-use)
-  - [Why This Is A Good Solution](#why-this-is-a-good-solution)
+    - [Table of Contents](#table-of-contents)
+    - [What This Project Does](#what-this-project-does)
+    - [Overall Design](#overall-design)
+    - [Reliability Layers](#reliability-layers)
+    - [Architecture Diagram](#architecture-diagram)
+    - [Mode Behavior Diagram](#mode-behavior-diagram)
+    - [Design Notes](#design-notes)
+        - [1. LLM Prompt Design](#1-llm-prompt-design)
+        - [2. Swagger → Playwright Tests](#2-swagger--playwright-tests)
+        - [3. Generation Process](#3-generation-process)
+        - [4. CI Quality Gate](#4-ci-quality-gate)
+        - [5. Scaling to More Endpoints](#5-scaling-to-more-endpoints)
+        - [6. Preventing Hallucinated or Incorrect Tests](#6-preventing-hallucinated-or-incorrect-tests)
+        - [7. Handling Flaky or Unstable Tests](#7-handling-flaky-or-unstable-tests)
+        - [8. E2E Selector Strategy and Stability](#8-e2e-selector-strategy-and-stability)
+        - [9. Preventing Flaky Frontend Tests](#9-preventing-flaky-frontend-tests)
+    - [Short Script Explanations](#short-script-explanations)
+    - [System Under Test](#system-under-test)
+    - [Local Use](#local-use)
+    - [LLM Providers](#llm-providers)
+    - [Docker](#docker)
+    - [CI / CD Use](#ci--cd-use)
+    - [Validation Rules](#validation-rules)
+    - [Caching Strategy](#caching-strategy)
+    - [Offline Regression Checks](#offline-regression-checks)
+    - [CI / Quality Gate](#ci--quality-gate) - [GitHub Actions Setup](#github-actions-setup)
+        - [Repository Rules](#repository-rules)
+        - [How This Compares To Broader AI Test Generators](#how-this-compares-to-broader-ai-test-generators)
+        - [Prompt Files In Use](#prompt-files-in-use)
+        - [Why This Is A Good Solution](#why-this-is-a-good-solution)
 
 ## What This Project Does
 
@@ -43,7 +44,7 @@ This repository generates Playwright tests with Google Gemini, validates the gen
 - Supports optional negative/edge-case coverage through a separate prompt flow
 - Validates generated output before saving it
 - Repairs invalid output once, then skips it if still invalid
-- Reuses valid specs and simple cached LLM responses to reduce repeated Gemini calls
+- Reuses valid specs and simple cached LLM responses to reduce repeated provider calls
 
 ## Overall Design
 
@@ -53,7 +54,7 @@ The design is intentionally simple:
 2. Check that the required endpoints exist
 3. Use fixed payloads for the required API endpoints
 4. Keep API generation contract-first for happy-path scenarios
-5. Ask Gemini to generate one API spec per endpoint and one E2E spec
+5. Ask the selected provider to generate one API spec per endpoint and one E2E spec
 6. Validate the generated code
 7. Repair once if needed
 8. Save only valid `.spec.ts` files
@@ -125,7 +126,7 @@ flowchart TD
 
 ### 1. LLM Prompt Design
 
-Prompts are split into focused roles. `core_context.txt` sets the global context: TypeScript, Playwright, no placeholders, no TODOs. `api_test_generation.txt` handles API test generation with the Swagger contract and fixed payloads injected via `{{VARIABLE}}` substitution. `e2e_test_generation.txt` handles the checkout flow with explicit selector priority rules. `repair_generation.txt` routes a focused validation message back to Gemini for one fix attempt. `api_test_generation_negative.txt` is a separate prompt reserved for negative/edge-case API tests and is intentionally outside the active happy-path runtime flow. Keeping prompts short and single-purpose reduces unpredictable output.
+Prompts are split into focused roles. `core_context.md` sets the global context: TypeScript, Playwright, no placeholders, no TODOs. `api_test_generation.md` handles API test generation with the Swagger contract and fixed payloads injected via `{{VARIABLE}}` substitution. `e2e_test_generation.md` handles the checkout flow with explicit selector priority rules. `repair_generation.md` routes a focused validation message back to the selected provider for one fix attempt. `api_test_generation_negative.md` is a separate prompt reserved for negative/edge-case API tests and is intentionally outside the active happy-path runtime flow. Keeping prompts short and single-purpose reduces unpredictable output.
 
 ### 2. Swagger → Playwright Tests
 
@@ -141,11 +142,11 @@ See [CI / Quality Gate](#ci--quality-gate) below.
 
 ### 5. Scaling to More Endpoints
 
-`generate_tests.py` iterates over a `REQUIRED_ENDPOINTS` list. Adding a new endpoint is one list entry: method, path, payload, and expected status. The rest of the pipeline (prompt rendering, Gemini call, validation, cache, file write) runs automatically for each entry. The caching layer prevents re-generation of previously generated valid specs on partial runs so adding endpoints does not force a full regeneration.
+`generate_tests.py` iterates over a `REQUIRED_ENDPOINTS` list. Adding a new endpoint is one list entry: method, path, payload, and expected status. The rest of the pipeline (prompt rendering, LLM call, validation, cache, file write) runs automatically for each entry. The caching layer prevents re-generation of previously generated valid specs on partial runs so adding endpoints does not force a full regeneration.
 
 ### 6. Preventing Hallucinated or Incorrect Tests
 
-The validator enforces structural correctness (imports, `test()`, `expect()`, no TODOs), then endpoint-specific rules: only the target route can be referenced, the correct HTTP status must be asserted, and at least one stable response field must be asserted. If any check fails, one repair attempt is made with a focused explanation. If the repair still fails, behavior depends on the mode: in CI (`STRICT_GENERATION=true`, the default), the build fails immediately so no required test is silently missing; locally (`STRICT_GENERATION=false`), the file is skipped and a message is printed. Either way, nothing invalid is ever saved. Prompts also embed the Swagger contract directly so Gemini has the source of truth in context rather than guessing field names.
+The validator enforces structural correctness (imports, `test()`, `expect()`, no TODOs), then endpoint-specific rules: only the target route can be referenced, the correct HTTP status must be asserted, and at least one stable response field must be asserted. If any check fails, one repair attempt is made with a focused explanation. If the repair still fails, behavior depends on the mode: in CI (`STRICT_GENERATION=true`, the default), the build fails immediately so no required test is silently missing; locally (`STRICT_GENERATION=false`), the file is skipped and a message is printed. Either way, nothing invalid is ever saved. Prompts also embed the Swagger contract directly so the selected model has the source of truth in context rather than guessing field names.
 
 ### 7. Handling Flaky or Unstable Tests
 
@@ -175,15 +176,15 @@ The prompt enforces a strict selector priority:
 ## Short Script Explanations
 
 - [`scripts/generate_tests.py`](scripts/generate_tests.py)
-   Main orchestration script. It loads Swagger, loops through the required endpoints, applies contract-first QA generation notes, calls Gemini with focused prompts, validates the output, and saves runnable specs.
+  Main orchestration script. It loads Swagger, loops through the required endpoints, applies contract-first QA generation notes, calls the selected provider with focused prompts, validates the output, and saves runnable specs.
 - [`scripts/swagger_loader.py`](scripts/swagger_loader.py)
   Loads Swagger from a live URL or file path, updates a local fallback copy, and extracts endpoint-specific contract data.
 - [`scripts/prompt_loader.py`](scripts/prompt_loader.py)
   Loads prompt templates and replaces variables like `{{ENDPOINT}}` and `{{PAYLOAD}}`.
 - [`scripts/llm_client.py`](scripts/llm_client.py)
-  Calls Gemini, retries temporary failures like rate limits, and stores simple versioned cache files for repeated runs.
+  Calls the selected provider, retries temporary failures like rate limits, and stores simple versioned cache files for repeated runs.
 - [`scripts/validator.py`](scripts/validator.py)
-   Checks if generated code looks runnable, enforces endpoint-specific API assertions and checkout-flow structure, explains what failed, and performs one repair attempt if needed.
+  Checks if generated code looks runnable, enforces endpoint-specific API assertions and checkout-flow structure, explains what failed, and performs one repair attempt if needed.
 
 ## System Under Test
 
@@ -219,7 +220,7 @@ Environment loading behavior:
    `npm install`
 3. Install Playwright browsers:
    `npx playwright install`
-4. Set the Gemini API key:
+4. Set the selected provider’s API key (Gemini example below; see [LLM Providers](#llm-providers) for OpenAI/Anthropic):
    PowerShell: `$env:GEMINI_API_KEY="your-key"`
 5. Start the application under test:
    frontend on `http://localhost:3000`
@@ -244,6 +245,18 @@ Local defaults:
 
 - existing valid specs are reused
 - LLM responses are cached under `.cache/llm/`
+
+## LLM Providers
+
+Gemini remains the default, preserving existing configurations. Set `LLM_PROVIDER` to `gemini`, `openai`, or `anthropic`, and provide the matching `GEMINI_API_KEY`, `OPENAI_API_KEY`, or `ANTHROPIC_API_KEY`. Only the selected provider receives generation and repair prompts.
+
+For OpenAI or Anthropic, set `LLM_MODEL` to a text-generation model ID enabled for your account. Model names and credentials are provider-specific. Update `LLM_MODEL` when changing providers; an existing Gemini model list does not apply to OpenAI or Anthropic. For Gemini, leaving `LLM_MODEL` blank uses the existing Gemini fallback order.
+
+OpenAI uses the [Responses API](https://developers.openai.com/api/docs/guides/text); Anthropic uses the [Messages API](https://platform.claude.com/docs/en/api/messages/create) with API version `2026-10-21`. These adapters use Python's standard-library HTTPS client; the Google SDK is imported only for Gemini. No new Python dependencies are required. Azure OpenAI, Bedrock, local servers, and custom endpoints are outside this implementation.
+
+`LLM_MAX_OUTPUT_TOKENS` defaults to `4096`, `LLM_MAX_RETRIES` to `4` attempts per model, and `LLM_REQUEST_TIMEOUT` to `120` seconds per request. Retry backoff uses `LLM_RETRY_INITIAL_DELAY` and `LLM_RETRY_MAX_DELAY` (defaults: `1` and `8` seconds). The output budget must include reasoning where the provider counts it; incomplete or empty responses fail instead of being cached as usable code.
+
+Generation, one repair attempt, contract validation, and strict CI behavior remain the same for every provider. Changing a provider or model does not regenerate already-valid specs locally; set `FORCE_REGENERATE=true` to exercise the selected provider. LLM cache entries are isolated by provider, actual model, prompt, token limit, and cache version.
 
 ## Docker
 
@@ -291,7 +304,7 @@ CI defaults:
 - generation is forced even if valid specs already exist
 - generation is strict and fails the job if any required spec cannot be regenerated
 - LLM response caching is disabled by default
-- `LLM_CACHE_VERSION` can stay on `v1` unless prompt strategy changes
+- `LLM_CACHE_VERSION` can stay on `v4` unless prompt strategy changes
 - the workflow should fail fast on generation, compile, or Playwright test errors
 
 Environment controls:
@@ -302,15 +315,19 @@ Environment controls:
 - `LLM_CACHE_ENABLED=true|false`
 - `LLM_CACHE_DIR=.cache/llm`
 
-`LLM_MODEL` accepts a comma-separated fallback order. The generator tries models from left to right and automatically switches to the next model when the current model appears quota-limited.
+`LLM_MODEL` accepts a comma-separated fallback order within the selected provider. Each model receives bounded retries for temporary failures. After quota/rate-limit retries are exhausted, the generator tries the next model. Authentication and invalid-request failures stop immediately. Providers are never switched automatically.
 
 To invalidate old LLM cache entries, bump:
 
-- `LLM_CACHE_VERSION=v1`
+- `LLM_CACHE_VERSION=v4`
 
 In practice, bump `LLM_CACHE_VERSION` whenever prompt wording or validator logic changes. That keeps fresh generations isolated from older cached outputs.
 
 ## Validation Rules
+
+API validation reads the target POST operation’s success status and stable response fields from Swagger, including local schema references and `allOf` properties. It rejects contracts without a single explicit success response or a supported stable JSON field. Reuse and repair use the same contract expectations.
+
+Generated specs use direct request/response assertions and direct awaited checkout actions so the lightweight validator can verify them. E2E navigation uses `page.goto('/')` to respect the configured frontend URL.
 
 A generated test is considered valid when it:
 
@@ -333,11 +350,17 @@ If invalid:
 
 Caching is intentionally simple.
 
-- Each generated artifact gets a readable cache key such as `api_api_checkout` or `e2e_checkout`
+- Each generated artifact gets a readable key such as `api_api_checkout` or `e2e_checkout`; the cache filename also includes the provider and a hash of the actual model, prompt, token limit, and cache version
 - Responses are stored as versioned text files under `.cache/llm/`
 - If the prompt strategy changes, bump `LLM_CACHE_VERSION`
 
-This helps reduce unnecessary Gemini calls and lowers the chance of hitting rate limits quickly.
+This helps reduce unnecessary provider calls and lowers the chance of hitting rate limits quickly.
+
+## Offline Regression Checks
+
+Run `npm run test:unit` to execute the repository-local Python unittest suite in `scripts/test_*.py`. It uses fixed fixtures, temporary cache directories, and mocked provider responses; no API keys, live application, or paid LLM calls are required. Coverage includes all three provider adapters, retries/fallback, cache isolation, Swagger expectations, Markdown loading, repair context, and rejection of skipped or intercepted tests.
+
+GitHub Actions runs these tests, lint, formatting checks, and TypeScript compilation before browser installation and the live quality gate. Generated specs remain in `tests/api/` and `tests/web/`; the Python checks exercise the generator itself.
 
 ## CI / Quality Gate
 
@@ -359,10 +382,12 @@ The bundled workflow expects these GitHub Actions settings:
 
 Secrets:
 
-- `GEMINI_API_KEY`
+- The selected provider’s key: `GEMINI_API_KEY`, `OPENAI_API_KEY`, or `ANTHROPIC_API_KEY`
 
 Repository or environment variables:
 
+- `LLM_PROVIDER` (defaults to `gemini`)
+- `LLM_MODEL` (required for OpenAI/Anthropic; blank uses Gemini defaults)
 - `SWAGGER_PATH`
 - `STAGING_BASE_URL`
 - `STAGING_API_URL`
@@ -409,14 +434,18 @@ So compared with broader examples, this project is less feature-rich as a framew
 
 ## Prompt Files In Use
 
-- [`prompts/core_context.txt`](prompts/core_context.txt)
-- [`prompts/api_test_generation.txt`](prompts/api_test_generation.txt)
-- [`prompts/e2e_test_generation.txt`](prompts/e2e_test_generation.txt)
-- [`prompts/repair_generation.txt`](prompts/repair_generation.txt)
+Prompt templates are Markdown files, loaded by name from `prompts/` or `prompts/optional/`. Headings structure the instructions; generated specs remain raw TypeScript without Markdown fences. Only the four active templates below are loaded by the happy-path runtime flow.
+
+Repair receives the original generation instructions, including the API payload or checkout selectors, fixed values, and success text, together with the validation error. It still runs at most once.
+
+- [`prompts/core_context.md`](prompts/core_context.md)
+- [`prompts/api_test_generation.md`](prompts/api_test_generation.md)
+- [`prompts/e2e_test_generation.md`](prompts/e2e_test_generation.md)
+- [`prompts/repair_generation.md`](prompts/repair_generation.md)
 
 Negative/edge-case prompt (not active in the current runtime flow):
 
-- [`prompts/api_test_generation_negative.txt`](prompts/api_test_generation_negative.txt)
+- [`prompts/optional/api_test_generation_negative.md`](prompts/optional/api_test_generation_negative.md)
 
 Other prompt files in [`prompts/`](prompts/) are currently kept as legacy or optional references. They are not loaded by the present runtime flow, so they do not add token cost unless the code is expanded to use them again.
 

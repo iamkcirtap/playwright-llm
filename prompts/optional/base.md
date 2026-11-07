@@ -1,14 +1,21 @@
-Generate runnable Playwright .spec.ts tests with Gemini.
+# Base
 
-Goal:
+> Optional reference: not loaded by the active happy-path generation flow.
+
+Generate runnable Playwright .spec.ts tests with the selected provider.
+
+## Goal
+
 - Produce deterministic, low-maintenance tests that run in CI unchanged.
 
-Context:
-- Frontend: http://localhost:3000
+## Context
+
+- Frontend: configured Playwright baseURL via relative navigation
 - Backend API: http://localhost:8080
 - Swagger: http://localhost:8080/swagger.json
 
-Rules:
+## Requirements
+
 - Return code only
 - Return a complete runnable .spec.ts file
 - Do not add markdown fences, placeholders, TODOs, or pseudo-code
@@ -16,15 +23,17 @@ Rules:
 - Do not invent endpoints, fields, response properties, selectors, or UI states
 - Keep output minimal, clear, and deterministic
 
-API expectations:
+## API expectations
+
 - Cover /api/checkout, /api/validate-card, and /api/validate-email when requested
-- Prefer runtime behavior if it conflicts with Swagger
+- Keep Swagger contract expectations when runtime differs; expose the mismatch during execution
 - Prefer Swagger-grounded payloads and assertions
 - Prefer ApiHelper from utils/api-helper.ts
 - Assert HTTP status and 1-2 stable response fields only
 - Avoid unstable assertions such as IDs, timestamps, or transient text
 
-E2E expectations:
+## E2E expectations
+
 - Generate one stable checkout flow when requested
 - Fill email, cardNumber, expiry, cvv, amount
 - Submit the form and assert visible success
@@ -33,7 +42,8 @@ E2E expectations:
 - Avoid getByLabel unless clearly valid
 - Do not invent data-testid values
 
-Quality:
+## Quality
+
 - Include test() and expect()
 - Keep tests runnable without manual edits
-- Choose the safest valid assumption if context is incomplete
+- Do not invent missing contract or UI facts; require supplied context

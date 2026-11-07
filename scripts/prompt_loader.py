@@ -1,6 +1,6 @@
 """Helpers for loading prompt templates and injecting variables.
 
-The generator keeps prompts in text files so they are easy to read and update
+The generator keeps prompts in Markdown files so they are easy to read and update
 without changing Python logic.
 """
 
@@ -13,13 +13,13 @@ OPTIONAL_PROMPT_DIR = PROMPT_DIR / "optional"
 def get_prompt_path(prompt_name: str) -> Path:
     """Find a prompt file in the main prompts folder or optional subfolder."""
     candidate_paths = [
-        PROMPT_DIR / f"{prompt_name}.txt",
-        OPTIONAL_PROMPT_DIR / f"{prompt_name}.txt",
+        PROMPT_DIR / f"{prompt_name}.md",
+        OPTIONAL_PROMPT_DIR / f"{prompt_name}.md",
     ]
     for path in candidate_paths:
         if path.is_file():
             return path
-    raise FileNotFoundError(f"Prompt file '{prompt_name}.txt' not found.")
+    raise FileNotFoundError(f"Prompt file '{prompt_name}.md' not found.")
 
 
 def load_prompt(prompt_name: str) -> str:

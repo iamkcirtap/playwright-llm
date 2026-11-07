@@ -3,7 +3,7 @@
 This script is the main entry point for the generation flow. It:
 - loads the Swagger contract
 - checks that the required endpoints exist
-- generates the required API and E2E specs with Gemini (API endpoints run in parallel)
+- generates the required API and E2E specs with the selected provider (API endpoints run in parallel)
 - normalizes a few known-safe generated-code patterns before validation
 - validates generated output with endpoint-specific rules
 - repairs invalid output once
@@ -28,6 +28,7 @@ from swagger_loader import (
     load_swagger_spec_dict,
     extract_api_endpoints,
     extract_endpoint_spec,
+    extract_response_expectations,
 )
 import validator
 
@@ -41,6 +42,13 @@ REQUIRED_API_ENDPOINTS = [
 ]
 CHECKOUT_E2E_PLAN = {
     "flow": "checkout",
+    "path": "/",
+    "inputSelectors": {
+        field: f'input[name="{field}"]'
+        for field in ["email", "cardNumber", "expiry", "cvv", "amount"]
+    },
+    "submitSelector": 'button[type="submit"]',
+    "successText": "✅ Payment processed successfully!",
     "requiredFields": ["email", "cardNumber", "expiry", "cvv", "amount"],
     "sampleValues": {
         "email": "buyer@example.com",
@@ -148,15 +156,18 @@ def generate_one_api_test(
 ) -> None:
     """Generate, validate, and save one API spec for a single endpoint."""
     existing_file_path = get_api_test_file_path(endpoint)
+    endpoint_spec = extract_endpoint_spec(swagger_spec_dict, endpoint)
+    expectations = extract_response_expectations(swagger_spec_dict, endpoint)
+    endpoint_spec["validation_expectations"] = expectations
 
     if should_reuse_existing_spec(
         existing_file_path,
         allowed_api_endpoints=allowed_api_endpoints,
         log_name=endpoint,
+        api_expectations=expectations,
     ):
         return
 
-    endpoint_spec = extract_endpoint_spec(swagger_spec_dict, endpoint)
     payload = DETERMINISTIC_PAYLOADS[endpoint]
     test_code = generate_with_llm_guard(
         f"endpoint '{endpoint}'",
@@ -165,7 +176,9 @@ def generate_one_api_test(
 
     validated_code = validate_generated_spec(
         test_code,
+        api_expectations=expectations,
         allowed_api_endpoints=allowed_api_endpoints,
+        generation_context=build_api_generation_prompt(endpoint_spec, payload),
     )
     if validated_code is None:
         handle_generation_failure(
@@ -178,11 +191,18 @@ def generate_one_api_test(
 
 
 def generate_api_test(endpoint_spec: dict, payload: dict) -> str:
-    """Build the API prompt for one endpoint and ask Gemini for a spec file."""
+    """Build the API prompt for one endpoint and ask the selected provider for a spec file."""
+    prompt = build_api_generation_prompt(endpoint_spec, payload)
+    endpoint_cache_key = endpoint_spec["endpoint"].strip("/").replace("/", "_")
+    return call_llm(prompt, cache_key=f"api_{endpoint_cache_key}")
+
+
+def build_api_generation_prompt(endpoint_spec: dict, payload: dict) -> str:
+    """Share the original API requirements between generation and repair."""
     base_prompt = load_prompt(BASE_PROMPT_NAME)
     api_prompt = load_prompt("api_test_generation")
 
-    prompt = build_prompt(
+    return build_prompt(
         base_prompt,
         api_prompt,
         {
@@ -191,8 +211,6 @@ def generate_api_test(endpoint_spec: dict, payload: dict) -> str:
             "PAYLOAD": json.dumps(payload, indent=2),
         },
     )
-    endpoint_cache_key = endpoint_spec["endpoint"].strip("/").replace("/", "_")
-    return call_llm(prompt, cache_key=f"api_{endpoint_cache_key}")
 
 
 def generate_e2e_tests() -> None:
@@ -214,6 +232,7 @@ def generate_e2e_tests() -> None:
     validated_code = validate_generated_spec(
         test_code,
         require_e2e_structure=True,
+        generation_context=build_e2e_generation_prompt(CHECKOUT_E2E_PLAN),
     )
     if validated_code is None:
         handle_generation_failure(
@@ -234,12 +253,17 @@ def generate_with_llm_guard(target_name: str, generator: Callable[[], str]) -> s
 
 
 def generate_e2e_test(e2e_test_plan: dict) -> str:
-    """Build the E2E prompt and ask Gemini for a checkout spec file."""
+    """Build the E2E prompt and ask the selected provider for a checkout spec file."""
+    prompt = build_e2e_generation_prompt(e2e_test_plan)
+    return call_llm(prompt, cache_key=f"e2e_{e2e_test_plan['flow']}")
+
+
+def build_e2e_generation_prompt(e2e_test_plan: dict) -> str:
+    """Share the original checkout plan between generation and repair."""
     base_prompt = load_prompt(BASE_PROMPT_NAME)
     e2e_prompt = load_prompt("e2e_test_generation")
 
-    prompt = build_prompt(base_prompt, e2e_prompt, {"E2E_PLAN": json.dumps(e2e_test_plan)})
-    return call_llm(prompt, cache_key=f"e2e_{e2e_test_plan['flow']}")
+    return build_prompt(base_prompt, e2e_prompt, {"E2E_PLAN": json.dumps(e2e_test_plan, ensure_ascii=False)})
 
 
 def save_spec_file(file_path: pathlib.Path, test_code: str) -> None:
@@ -285,6 +309,8 @@ def validate_generated_spec(
     test_code: str,
     allowed_api_endpoints: set[str] | None = None,
     require_e2e_structure: bool = False,
+    api_expectations: dict | None = None,
+    generation_context: str = "",
 ) -> str | None:
     """Run validation with one repair attempt and return final code or None.
 
@@ -297,6 +323,8 @@ def validate_generated_spec(
         normalized_code,
         allowed_api_endpoints=allowed_api_endpoints,
         require_e2e_structure=require_e2e_structure,
+        api_expectations=api_expectations,
+        generation_context=generation_context,
     )
 
 
@@ -344,6 +372,7 @@ def should_reuse_existing_spec(
     allowed_api_endpoints: set[str] | None = None,
     require_e2e_structure: bool = False,
     log_name: str = "spec",
+    api_expectations: dict | None = None,
 ) -> bool:
     """Return True when an existing file is valid and can be reused."""
     if FORCE_REGENERATE or not file_path.is_file():
@@ -354,6 +383,7 @@ def should_reuse_existing_spec(
         existing_code,
         allowed_api_endpoints=allowed_api_endpoints,
         require_e2e_structure=require_e2e_structure,
+        api_expectations=api_expectations,
     )
     if is_valid:
         print(f"Skipping regeneration for '{log_name}' because an existing valid spec already exists.")

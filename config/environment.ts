@@ -76,16 +76,16 @@ const currentEnv = (process.env.TEST_ENV as Environment) || 'staging';
 export const environment = {
     ...environments[currentEnv],
     env: currentEnv,
-    
+
     // Test user credentials (use environment variables for sensitive data)
     testUser: {
         username: process.env.TEST_USERNAME || 'test@example.com',
         password: process.env.TEST_PASSWORD || '', // Never hardcode passwords
     },
-    
+
     // API authentication
     apiKey: process.env.API_SECRET_KEY || '',
-    
+
     // Feature flags
     features: {
         enableScreenshots: process.env.TAKE_SCREENSHOTS === 'true',
